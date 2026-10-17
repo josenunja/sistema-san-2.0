@@ -1,0 +1,69 @@
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6-bookworm
+        env:
+          POSTGRES_DB: sas_san_test
+          POSTGRES_USER: sas_owner
+          POSTGRES_PASSWORD: ci-only-random-not-production
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U sas_owner -d sas_san_test" --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      APP_ENV: local
+      APP_URL: http://localhost
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: sas_san_test
+      DB_USERNAME: sas_owner
+      DB_PASSWORD: ci-only-random-not-production
+      MAIL_MAILER: array
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.4'
+          extensions: pdo_pgsql, gd, sodium, intl, zip
+          tools: composer:v2
+          coverage: none
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+      - name: Install locked dependencies
+        run: |
+          composer install --no-interaction --prefer-dist
+          npm ci --ignore-scripts
+          cp .env.example .env
+          php artisan key:generate
+          php artisan migrate --force
+          php artisan platform:runtime
+      - name: Static checks and build
+        run: |
+          vendor/bin/pint --test
+          vendor/bin/phpstan analyse --memory-limit=512M
+          npm run check
+          npm run types:check
+          npm run build
+      - name: Runtime RLS and commerce tests
+        env:
+          APP_ENV: testing
+          DB_USERNAME: sas_runtime
+        run: |
+          php artisan test --filter='Tenant|Commerce|Offline|Platform|Catalog|Customer|Fiscal'
+          php artisan testing:stock-race
+          php artisan testing:operation-races
+      - name: Dependency review
+        run: |
+          composer audit --locked
+          npm audit --audit-level=high

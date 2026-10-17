@@ -1,0 +1,2 @@
+# Instrucciones de continuidad
+Leer README.md y docs/PROJECT_CONTEXT.md, docs/PROGRESS.md y docs/SECURITY.md. Código en app/. Mantener Laravel/Vue/PostgreSQL. No usar SQLite para validar aislamiento. No borrar datos ni ejecutar migrate:fresh salvo base aislada sas_san_test identificada. Runtime sas_runtime sin BYPASSRLS; migraciones con sas_owner. Dinero en céntimos. No activar integraciones reales ni publicar sin instrucción explícita. Documentar honestamente evidencia y pendientes.

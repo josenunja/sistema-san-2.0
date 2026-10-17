@@ -1,0 +1,143 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { money } from '@/lib/commerce';
+const props = defineProps<{
+    tenant: { name: string; slug: string };
+    product: {
+        id: number;
+        name: string;
+        sku: string;
+        price_minor: number;
+        category: string;
+        variant_group: string;
+        description: string;
+        published: boolean;
+    };
+    images: string[];
+    variants: { id: number; name: string; price_minor: number }[];
+    available: number;
+}>();
+const selected = ref(props.images[0] || '');
+const quantity = ref(1);
+const error = ref('');
+function add() {
+    try {
+        const key = `cart:${props.tenant.slug}`;
+        const rows = JSON.parse(sessionStorage.getItem(key) || '[]') as {
+            product_id: number;
+            quantity: number;
+            name: string;
+            unit: number;
+        }[];
+        const old = rows.find((l) => l.product_id === props.product.id);
+        if (old) old.quantity += quantity.value;
+        else
+            rows.push({
+                product_id: props.product.id,
+                quantity: quantity.value,
+                name: props.product.name,
+                unit: props.product.price_minor,
+            });
+        sessionStorage.setItem(key, JSON.stringify(rows));
+        router.visit(`/tienda/${props.tenant.slug}#carrito`);
+    } catch {
+        error.value = 'No se pudo guardar el carrito en este navegador.';
+    }
+}
+</script>
+<template>
+    <Head :title="product.name" />
+    <main class="mx-auto min-h-screen max-w-6xl p-6 py-10 text-slate-900">
+        <Link :href="`/tienda/${tenant.slug}`" class="text-sm text-emerald-700"
+            >← {{ tenant.name }}</Link
+        >
+        <div class="mt-8 grid gap-10 md:grid-cols-2">
+            <section>
+                <div
+                    class="flex min-h-72 items-center justify-center rounded-3xl border bg-white p-8"
+                >
+                    <img
+                        v-if="selected"
+                        :src="selected"
+                        :alt="product.name"
+                        class="max-h-96 w-full object-contain"
+                    /><span v-else class="text-8xl text-emerald-800">{{
+                        product.name.slice(0, 1)
+                    }}</span>
+                </div>
+                <div class="mt-5 flex flex-wrap gap-3">
+                    <button
+                        v-for="(image, i) in images"
+                        :key="image"
+                        class="rounded-xl border bg-white p-2"
+                        :aria-label="`Ver foto ${i + 1}`"
+                        @click="selected = image"
+                    >
+                        <img
+                            :src="image"
+                            :alt="`Foto ${i + 1}`"
+                            class="h-16 w-16 object-contain"
+                        />
+                    </button>
+                </div>
+            </section>
+            <section>
+                <p class="text-xs tracking-widest text-slate-500">
+                    {{ product.category }} · {{ product.sku }}
+                </p>
+                <h1 class="mt-4 text-4xl font-semibold tracking-tight">
+                    {{ product.name }}
+                </h1>
+                <p class="mt-6 text-3xl font-semibold">
+                    {{ money(product.price_minor) }}
+                </p>
+                <p
+                    class="mt-5 leading-relaxed whitespace-pre-wrap text-slate-500"
+                >
+                    {{ product.description }}
+                </p>
+                <div v-if="variants.length" class="mt-7">
+                    <h2 class="text-sm font-semibold">Elige tu variante</h2>
+                    <div class="mt-3 flex flex-wrap gap-3">
+                        <Link
+                            v-for="v in variants"
+                            :key="v.id"
+                            :href="`/tienda/${tenant.slug}/producto/${v.id}`"
+                            class="rounded-xl border px-4 py-3 text-sm"
+                            :class="
+                                v.id === product.id
+                                    ? 'border-emerald-800 bg-emerald-50'
+                                    : ''
+                            "
+                            >{{ v.name }}</Link
+                        >
+                    </div>
+                </div>
+                <p class="mt-6 text-sm text-slate-500">
+                    {{ available }} unidades disponibles entre nuestros
+                    almacenes.
+                </p>
+                <form class="mt-6 flex gap-3" @submit.prevent="add">
+                    <input
+                        v-model.number="quantity"
+                        aria-label="Unidades"
+                        required
+                        type="number"
+                        min="1"
+                        :max="Math.max(1, available)"
+                        class="w-24 rounded-xl border p-3"
+                    /><button
+                        :disabled="!product.published || available < 1"
+                        class="flex-1 rounded-xl bg-emerald-800 p-4 text-white disabled:opacity-40"
+                    >
+                        {{ available > 0 ? 'Añadir al carrito' : 'Agotado' }}
+                    </button>
+                </form>
+                <p v-if="error" role="alert" class="mt-3 text-sm text-red-700">
+                    {{ error }}
+                </p>
+            </section>
+        </div>
+    </main>
+</template>

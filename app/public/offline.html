@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <meta name="theme-color" content="#163c32" />
+        <title>SAS SAN · Caja sin conexión</title>
+        <link rel="manifest" href="/offline.webmanifest" />
+        <link rel="icon" href="/offline-icon.svg" />
+        <link rel="stylesheet" href="/offline.css" />
+        <script defer src="/offline.js"></script>
+    </head>
+    <body>
+        <main>
+            <a href="/dashboard">← Volver a gestión (requiere conexión)</a>
+            <h1>SAS SAN · Caja sin conexión</h1>
+            <p class="muted">
+                Solo ventas completas en efectivo, con existencias previamente
+                asignadas. Los tickets son internos; no son comprobantes
+                aceptados por SUNAT.
+            </p>
+            <p id="message" role="alert"></p>
+            <section id="locked" class="card">
+                <h2>Desbloquear este dispositivo</h2>
+                <label
+                    >Clave local (8 caracteres o más)<input
+                        id="password"
+                        type="password"
+                        minlength="8"
+                        autocomplete="off"
+                /></label>
+                <div class="row">
+                    <button id="unlock" class="primary">
+                        Desbloquear pendientes
+                    </button>
+                </div>
+                <label
+                    >Importar permiso descargado desde gestión<input
+                        id="import"
+                        type="file"
+                        accept="application/json,.json" /></label
+                ><label
+                    >Restaurar respaldo cifrado<input
+                        id="restore"
+                        type="file"
+                        accept="application/json,.json"
+                /></label>
+                <p class="muted">
+                    La clave cifra el catálogo y las ventas pendientes de este
+                    navegador. Guárdala: no existe una clave de recuperación
+                    universal. El navegador puede perder almacenamiento; exporta
+                    tus pendientes como respaldo.
+                </p>
+            </section>
+            <section id="workspace" hidden>
+                <div class="card">
+                    <div class="row">
+                        <h2>Equipo activo</h2>
+                        <button id="lock">Bloquear</button>
+                    </div>
+                    <label>Asignación<select id="device"></select></label>
+                    <p id="balance" class="muted"></p>
+                    <div class="row">
+                        <label>Producto<select id="product"></select></label
+                        ><label
+                            >Unidades<input
+                                id="quantity"
+                                type="number"
+                                value="1"
+                                min="1"
+                                max="10000" /></label
+                        ><button id="add">Añadir</button>
+                    </div>
+                    <ul id="basket"></ul>
+                    <p id="total"></p>
+                    <button id="sell" class="primary">
+                        Confirmar venta en efectivo
+                    </button>
+                </div>
+                <div class="card">
+                    <h2>Ventas guardadas</h2>
+                    <p class="muted">
+                        La sincronización requiere iniciar sesión con la misma
+                        cuenta que creó el permiso y mantener abierta su caja.
+                        Si aparece un conflicto, conserva la venta y exporta los
+                        datos para revisarlos con el responsable.
+                    </p>
+                    <div class="row">
+                        <button id="sync" class="primary">
+                            Sincronizar pendientes</button
+                        ><button id="retry-save">Reintentar guardado</button
+                        ><button id="export">Exportar respaldo cifrado</button
+                        ><button id="review-export">
+                            Exportar solicitud de revisión
+                        </button>
+                    </div>
+                    <ul id="pending"></ul>
+                </div>
+                <pre id="ticket"></pre>
+                <button id="print">Imprimir último ticket</button>
+            </section>
+        </main>
+    </body>
+</html>

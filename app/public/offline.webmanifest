@@ -1,0 +1,16 @@
+{
+    "name": "SAS SAN · Caja sin conexión",
+    "short_name": "SAS SAN POS",
+    "start_url": "/offline.html",
+    "display": "standalone",
+    "background_color": "#f4f6f3",
+    "theme_color": "#163c32",
+    "icons": [
+        {
+            "src": "/offline-icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}

@@ -1,0 +1,124 @@
+:root {
+    font:
+        16px system-ui,
+        sans-serif;
+    color: #17252b;
+    background: #f4f6f3;
+}
+* {
+    box-sizing: border-box;
+}
+body {
+    margin: 0;
+}
+main {
+    max-width: 1000px;
+    margin: auto;
+    padding: 32px 20px;
+}
+h1 {
+    font-size: 32px;
+    letter-spacing: -1px;
+}
+h2 {
+    font-size: 20px;
+}
+p {
+    line-height: 1.6;
+}
+.muted {
+    color: #64736e;
+    font-size: 14px;
+}
+.card {
+    background: white;
+    border: 1px solid #dde4df;
+    border-radius: 20px;
+    padding: 24px;
+    margin: 20px 0;
+}
+label {
+    display: grid;
+    gap: 8px;
+    margin: 16px 0;
+    font-size: 14px;
+}
+input,
+select,
+button {
+    font: inherit;
+    padding: 12px;
+    border: 1px solid #cfd9d1;
+    border-radius: 10px;
+    max-width: 100%;
+    background: white;
+}
+button {
+    cursor: pointer;
+    font-weight: 600;
+}
+button.primary {
+    background: #163c32;
+    color: white;
+    border-color: #163c32;
+}
+button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 3px solid #93c5a5;
+    outline-offset: 3px;
+}
+.row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.row > * {
+    flex: 1;
+}
+li {
+    padding: 12px 0;
+    border-bottom: 1px solid #eef1ed;
+    list-style: none;
+}
+ul {
+    padding: 0;
+}
+a {
+    color: #16734e;
+}
+#message {
+    white-space: pre-wrap;
+    color: #9c2727;
+}
+#balance {
+    color: #557163;
+}
+#ticket {
+    white-space: pre-wrap;
+    font: 14px monospace;
+}
+[hidden] {
+    display: none !important;
+}
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    #ticket,
+    #ticket * {
+        visibility: visible;
+    }
+    #ticket {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 75mm;
+        padding: 6mm;
+    }
+}

@@ -1,0 +1,14 @@
+.runtime/
+*.log
+**/.env
+**/.env.*
+!**/.env.example
+**/auth.json
+**/node_modules/
+**/vendor/
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+*.ssbk
