@@ -48,6 +48,7 @@ jobs:
           php artisan key:generate
           php artisan migrate --force
           php artisan platform:runtime
+          php artisan wayfinder:generate --with-form
       - name: Static checks and build
         run: |
           vendor/bin/pint --test
