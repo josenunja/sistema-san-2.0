@@ -64,7 +64,7 @@ class OfflineController extends Controller
                         $commerce->fail('Una operación ya tiene una revisión distinta.');
                     }
 
-continue;
+                    continue;
                 }
                 DB::table('offline_reviews')->insert(['tenant_id' => $tenant->id, 'device_id' => $operation['device_id'], 'operation_id' => $operation['operation_id'], 'payload_hash' => $hash, 'actor_id' => $request->user()->id, 'reason' => $data['reason']]);
             }
