@@ -50,4 +50,4 @@ if($Modo -eq 'Docker'){
         $scheduler.Id | Set-Content $schedulerPid
     }
 }
-Write-Host 'SAS SAN: http://localhost:8000 — complete la instalación inicial desde el navegador.'
+Write-Host 'SAS SAN: catálogo público en http://localhost:8000 — configuración administrativa en http://localhost:8000/instalacion.'

@@ -1,7 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { Layers3, Package, ShoppingBag, ArrowRight } from '@lucide/vue';
+import {
+    ArrowLeft,
+    ArrowRight,
+    Baby,
+    BadgePercent,
+    Flame,
+    Layers3,
+    LayoutGrid,
+    Package,
+    Shirt,
+    ShoppingBag,
+    Sparkles,
+    MapPin,
+} from '@lucide/vue';
 import BusinessShell from '@/components/BusinessShell.vue';
 import { money, minor, jsonPost } from '@/lib/commerce';
 type Product = {
@@ -9,9 +22,14 @@ type Product = {
     sku: string;
     name: string;
     price_minor: number;
+    compare_at_minor: number | null;
     published: boolean;
     category: string;
+    audience: 'women' | 'men' | 'kids' | 'unisex';
+    trending: boolean;
     variant_group: string;
+    size: string;
+    color: string;
     description: string;
     image_url: string | null;
 };
@@ -21,6 +39,7 @@ const props = defineProps<{
     preview?: boolean;
     categories: string[];
     category: string;
+    section: string;
     importPreview: { token: string; count: number; sample: Product[] } | null;
     search: string;
     products: {
@@ -28,8 +47,60 @@ const props = defineProps<{
         links: { url: string | null; label: string; active: boolean }[];
     };
     warehouses: { id: number; name: string; branch: string }[];
-    settings: { tagline?: string; theme?: string; delivery_minor?: number };
+    settings: {
+        tagline?: string;
+        description?: string;
+        theme?: string;
+        storefront_theme?:
+            | 'classic'
+            | 'urban'
+            | 'elegant'
+            | 'feminine'
+            | 'pastel'
+            | 'glamour'
+            | 'sport'
+            | 'footwear'
+            | 'minimal'
+            | 'vintage';
+        business_type?: string;
+        location?: string;
+        contact_email?: string;
+        whatsapp?: string;
+        delivery_minor?: number;
+        courier_minor?: number;
+        shipping_minor?: number;
+        delivery_methods?: string[];
+        logo_url?: string | null;
+        banner_url?: string | null;
+        instagram_url?: string;
+        facebook_url?: string;
+        tiktok_url?: string;
+        primary_color?: string;
+        accent_color?: string;
+        section_order?: string[];
+        business_hours?: {
+            day: string;
+            open: string;
+            close: string;
+            closed: boolean;
+        }[];
+        custom_domain?: string | null;
+        marketplace_url?: string;
+    };
     availability: { product_id: number; available: number }[];
+    customer: {
+        name: string;
+        phone: string;
+        email: string;
+        address: string;
+    } | null;
+    featuredCoupon: {
+        code: string;
+        percent: number;
+        amount_minor: number | null;
+        minimum_minor: number;
+        ends_at: string;
+    } | null;
 }>();
 const page = usePage();
 const editing = ref<number | null>(null);
@@ -37,9 +108,14 @@ const form = useForm({
     sku: '',
     name: '',
     price_minor: 0,
+    compare_at_minor: null as number | null,
     published: false,
     category: '',
+    audience: 'unisex' as 'women' | 'men' | 'kids' | 'unisex',
+    trending: false,
     variant_group: '',
+    size: '',
+    color: '',
     description: '',
 });
 const importFile = useForm({ file: null as File | null });
@@ -51,21 +127,34 @@ function edit(p: Product) {
     form.sku = p.sku;
     form.name = p.name;
     form.price_minor = p.price_minor;
+    form.compare_at_minor = p.compare_at_minor;
     form.published = p.published;
     form.category = p.category;
+    form.audience = p.audience;
+    form.trending = p.trending;
     form.variant_group = p.variant_group;
+    form.size = p.size;
+    form.color = p.color;
     form.description = p.description;
     price.value = (p.price_minor / 100).toFixed(2);
+    comparePrice.value = p.compare_at_minor
+        ? (p.compare_at_minor / 100).toFixed(2)
+        : '';
 }
 function reset() {
     editing.value = null;
     form.reset();
     price.value = '';
+    comparePrice.value = '';
 }
 const price = ref('');
+const comparePrice = ref('');
 function save() {
     try {
         form.price_minor = minor(price.value);
+        form.compare_at_minor = comparePrice.value.trim()
+            ? minor(comparePrice.value)
+            : null;
         form.submit(
             editing.value ? 'patch' : 'post',
             `/gestion/${props.tenant.slug}/productos${editing.value ? '/' + editing.value : ''}`,
@@ -73,6 +162,7 @@ function save() {
                 onSuccess: () => {
                     form.reset();
                     price.value = '';
+                    comparePrice.value = '';
                     editing.value = null;
                 },
             },
@@ -81,6 +171,10 @@ function save() {
         form.setError('price_minor', (e as Error).message);
     }
 }
+const audienceLabel = (audience: Product['audience']) =>
+    ({ women: 'Mujer', men: 'Hombre', kids: 'Niños', unisex: 'Unisex' })[
+        audience
+    ];
 const cart = ref<
     { product_id: number; quantity: number; name: string; unit: number }[]
 >([]);
@@ -94,15 +188,14 @@ try {
 const checkout = useForm({
     key: crypto.randomUUID(),
     warehouse_id: props.warehouses[0]?.id || '',
-    customer_name: '',
-    phone: '',
-    email: '',
-    address: '',
-    delivery_method: 'pickup',
-    coupon: '',
+    customer_name: props.customer?.name || '',
+    phone: props.customer?.phone || '',
+    email: props.customer?.email || '',
+    address: props.customer?.address || '',
+    delivery_method: props.settings.delivery_methods?.[0] || 'pickup',
+    coupon: props.featuredCoupon?.code || '',
     items: [] as { product_id: number; quantity: number }[],
     expected_total_minor: 0,
-    attach_account: false,
 });
 const quote = ref<Record<string, unknown> | null>(null);
 const quoteError = ref('');
@@ -137,6 +230,7 @@ function add(p: Product) {
 async function review() {
     quoting.value = true;
     quoteError.value = '';
+    checkout.coupon = checkout.coupon.trim().toUpperCase();
     try {
         quote.value = await jsonPost(`/tienda/${props.tenant.slug}/cotizar`, {
             items: cart.value.map((l) => ({
@@ -169,11 +263,107 @@ function order() {
 const available = (id: number) =>
     Number(props.availability.find((a) => a.product_id === id)?.available || 0);
 const theme = computed(() =>
-    props.settings.theme === 'azul'
-        ? '#173e68'
-        : props.settings.theme === 'violeta'
-          ? '#503267'
-          : '#163c32',
+    props.settings.primary_color
+        ? props.settings.primary_color
+        : props.settings.theme === 'azul'
+          ? '#173e68'
+          : props.settings.theme === 'violeta'
+            ? '#503267'
+            : '#163c32',
+);
+const accent = computed(() => props.settings.accent_color || '#b9e769');
+const storefrontStyle = computed(() => ({
+    '--store-primary': theme.value,
+    '--store-accent': accent.value,
+}));
+const sectionDefinitions = {
+    all: { label: 'Todo', icon: LayoutGrid, query: '' },
+    women: { label: 'Mujer', icon: Sparkles, query: 'women' },
+    men: { label: 'Hombre', icon: Shirt, query: 'men' },
+    kids: { label: 'Niños', icon: Baby, query: 'kids' },
+    trends: { label: 'Tendencias', icon: Flame, query: 'trends' },
+    promotions: {
+        label: 'Promociones',
+        icon: BadgePercent,
+        query: 'promotions',
+    },
+} as const;
+const sectionLinks = computed(() => {
+    const requested =
+        props.settings.section_order || Object.keys(sectionDefinitions);
+    return requested
+        .filter((key): key is keyof typeof sectionDefinitions =>
+            Object.hasOwn(sectionDefinitions, key),
+        )
+        .map((key) => ({ key, ...sectionDefinitions[key] }));
+});
+const deliveryOptions = computed(() => {
+    const enabled = props.settings.delivery_methods || [
+        'pickup',
+        ...(props.settings.delivery_minor != null ? ['delivery'] : []),
+    ];
+    const definitions: Record<string, { label: string; fee: number }> = {
+        pickup: { label: 'Recojo en tienda', fee: 0 },
+        delivery: {
+            label: 'Delivery local',
+            fee: props.settings.delivery_minor || 0,
+        },
+        courier: {
+            label: 'Courier',
+            fee: props.settings.courier_minor || 0,
+        },
+        shipping: {
+            label: 'Envío nacional',
+            fee: props.settings.shipping_minor || 0,
+        },
+    };
+    return enabled
+        .filter((key) => definitions[key])
+        .map((key) => ({
+            value: key,
+            ...definitions[key],
+        }));
+});
+const dayLabels: Record<string, string> = {
+    monday: 'Lunes',
+    tuesday: 'Martes',
+    wednesday: 'Miércoles',
+    thursday: 'Jueves',
+    friday: 'Viernes',
+    saturday: 'Sábado',
+    sunday: 'Domingo',
+};
+const storefrontTheme = computed(() =>
+    [
+        'classic',
+        'urban',
+        'elegant',
+        'feminine',
+        'pastel',
+        'glamour',
+        'sport',
+        'footwear',
+        'minimal',
+        'vintage',
+    ].includes(props.settings.storefront_theme || '')
+        ? props.settings.storefront_theme
+        : 'classic',
+);
+const themeClass = computed(() => `storefront-theme-${storefrontTheme.value}`);
+const themeEyebrow = computed(
+    () =>
+        ({
+            classic: 'BIENVENIDO A NUESTRA TIENDA',
+            urban: 'NUEVA COLECCIÓN · STREET EDIT',
+            elegant: 'UNA SELECCIÓN PARA TI',
+            feminine: 'FEMENINO · SUAVE · AUTÉNTICO',
+            pastel: 'BOUTIQUE DE TEMPORADA',
+            glamour: 'GLAMOUR · EDICIÓN ESPECIAL',
+            sport: 'MUÉVETE SIN LÍMITES',
+            footwear: 'CALZADO · COLECCIÓN EDITORIAL',
+            minimal: 'MENOS RUIDO · MÁS ESTILO',
+            vintage: 'PIEZAS CON HISTORIA',
+        })[storefrontTheme.value || 'classic'],
 );
 </script>
 <template>
@@ -183,24 +373,39 @@ const theme = computed(() =>
         role="owner"
         section="catalogo"
         class="sas-app storefront min-h-screen text-slate-900"
+        :class="themeClass"
+        :style="storefrontStyle"
     >
         <header
             v-if="!managing"
             class="storefront-header border-b bg-white p-5"
         >
             <nav class="mx-auto flex max-w-7xl items-center justify-between">
-                <Link href="/" class="sidebar-brand"
-                    ><span class="brand-symbol"><Layers3 :size="20" /></span
-                    ><strong
-                        >SAS<span class="brand-accent">SAN</span></strong
-                    ></Link
+                <Link :href="`/tienda/${tenant.slug}`" class="storefront-brand"
+                    ><img
+                        v-if="settings.logo_url"
+                        :src="settings.logo_url"
+                        :alt="`Logo de ${tenant.name}`"
+                    /><span v-else class="brand-symbol"
+                        ><Layers3 :size="20"
+                    /></span>
+                    <strong>{{ tenant.name }}</strong></Link
                 >
                 <div class="flex gap-5 text-sm">
+                    <Link
+                        :href="settings.marketplace_url || '/'"
+                        class="storefront-home-link"
+                        aria-label="Volver a todas las tiendas"
+                        ><ArrowLeft :size="16" />
+                        <span>Todas las tiendas</span></Link
+                    >
                     <Link :href="`/tienda/${tenant.slug}/seguimiento`"
                         >Seguir mi pedido</Link
                     ><a href="#carrito" class="storefront-cart-link"
                         ><ShoppingBag :size="16" />Carrito
-                        <span>{{ count }}</span></a
+                        <span class="storefront-cart-count">{{
+                            count
+                        }}</span></a
                     ><Link :href="`/tienda/${tenant.slug}/cuenta`"
                         >Mi cuenta</Link
                     >
@@ -208,24 +413,80 @@ const theme = computed(() =>
             </nav>
         </header>
         <div :class="managing ? '' : 'mx-auto max-w-7xl p-6 lg:p-10'">
-            <section
-                v-if="!managing"
-                class="storefront-hero mb-10 rounded-3xl px-8 py-12 text-white md:px-12"
-                :style="{ backgroundColor: theme }"
-            >
-                <p class="text-xs tracking-widest opacity-70">
-                    BIENVENIDO A NUESTRA TIENDA
-                </p>
-                <h1 class="mt-5 text-4xl font-semibold md:text-5xl">
-                    {{ tenant.name }}
-                </h1>
-                <p class="mt-5 max-w-2xl text-lg opacity-80">
-                    {{
-                        settings.tagline ||
-                        'Encuentra lo que buscas. Haz tu pedido y coordina directamente con nuestro negocio.'
-                    }}
-                </p>
-            </section>
+            <template v-if="!managing">
+                <section
+                    class="storefront-hero mb-10 rounded-3xl px-8 py-12 text-white md:px-12"
+                    :class="{ 'has-custom-banner': settings.banner_url }"
+                    :style="
+                        settings.banner_url
+                            ? {
+                                  backgroundImage: `linear-gradient(90deg, ${theme}f2 0%, ${theme}b8 55%, ${theme}52 100%), url(${settings.banner_url})`,
+                              }
+                            : { backgroundColor: theme }
+                    "
+                >
+                    <div class="storefront-theme-particles" aria-hidden="true">
+                        <span v-for="particle in 8" :key="particle"></span>
+                    </div>
+                    <p class="text-xs tracking-widest opacity-70">
+                        {{ themeEyebrow }}
+                    </p>
+                    <h1 class="mt-5 text-4xl font-semibold md:text-5xl">
+                        {{ tenant.name }}
+                    </h1>
+                    <p class="mt-5 max-w-2xl text-lg opacity-80">
+                        {{
+                            settings.tagline ||
+                            'Encuentra lo que buscas. Haz tu pedido y coordina directamente con nuestro negocio.'
+                        }}
+                    </p>
+                    <p
+                        v-if="settings.description"
+                        class="storefront-description"
+                    >
+                        {{ settings.description }}
+                    </p>
+                    <span v-if="settings.location" class="storefront-location"
+                        ><MapPin :size="14" /> {{ settings.location }}</span
+                    >
+                    <div v-if="featuredCoupon" class="storefront-coupon">
+                        <BadgePercent :size="18" />
+                        <span>
+                            <small>CUPÓN DESTACADO</small>
+                            <strong>{{ featuredCoupon.code }}</strong>
+                        </span>
+                        <span>
+                            {{
+                                featuredCoupon.amount_minor
+                                    ? money(featuredCoupon.amount_minor)
+                                    : `${featuredCoupon.percent}%`
+                            }}
+                            de descuento
+                        </span>
+                    </div>
+                </section>
+                <nav
+                    class="storefront-fashion-navigation"
+                    aria-label="Secciones de la tienda"
+                >
+                    <Link
+                        v-for="item in sectionLinks"
+                        :key="item.key"
+                        :href="
+                            item.query
+                                ? `/tienda/${tenant.slug}?section=${item.query}`
+                                : `/tienda/${tenant.slug}`
+                        "
+                        :class="{
+                            active: item.query
+                                ? section === item.query
+                                : !section,
+                        }"
+                        ><component :is="item.icon" :size="16" />
+                        {{ item.label }}</Link
+                    >
+                </nav>
+            </template>
             <template v-else
                 ><p
                     class="text-xs font-semibold tracking-widest text-emerald-700"
@@ -238,6 +499,12 @@ const theme = computed(() =>
                 </p></template
             >
             <form method="get" class="catalog-search my-7 flex gap-3">
+                <input
+                    v-if="section"
+                    type="hidden"
+                    name="section"
+                    :value="section"
+                />
                 <select
                     v-if="categories.length"
                     name="category"
@@ -306,6 +573,28 @@ const theme = computed(() =>
                     ><input v-model="form.published" type="checkbox" />Publicar
                     en tienda</label
                 ><label class="grid gap-2 text-sm"
+                    >Precio anterior S/ (promoción)<input
+                        v-model="comparePrice"
+                        inputmode="decimal"
+                        placeholder="Opcional, debe ser mayor"
+                        class="rounded-xl border p-3"
+                    /><span class="text-red-700">{{
+                        form.errors.compare_at_minor
+                    }}</span></label
+                ><label class="grid gap-2 text-sm"
+                    >Sección principal<select
+                        v-model="form.audience"
+                        class="rounded-xl border bg-white p-3"
+                    >
+                        <option value="unisex">Unisex</option>
+                        <option value="women">Mujer</option>
+                        <option value="men">Hombre</option>
+                        <option value="kids">Niños</option>
+                    </select></label
+                ><label class="flex items-center gap-3 text-sm"
+                    ><input v-model="form.trending" type="checkbox" />Mostrar en
+                    Tendencias</label
+                ><label class="grid gap-2 text-sm"
                     >Categoría<input
                         v-model="form.category"
                         maxlength="100"
@@ -316,6 +605,24 @@ const theme = computed(() =>
                         maxlength="100"
                         placeholder="Ej. Polo algodón"
                         class="rounded-xl border p-3" /></label
+                ><label class="grid gap-2 text-sm"
+                    >Talla<input
+                        v-model="form.size"
+                        maxlength="40"
+                        placeholder="Ej. M, L, 38"
+                        class="rounded-xl border p-3"
+                    /><span class="text-red-700">{{
+                        form.errors.size
+                    }}</span></label
+                ><label class="grid gap-2 text-sm"
+                    >Color<input
+                        v-model="form.color"
+                        maxlength="60"
+                        placeholder="Ej. Negro"
+                        class="rounded-xl border p-3"
+                    /><span class="text-red-700">{{
+                        form.errors.color
+                    }}</span></label
                 ><label class="grid gap-2 text-sm md:col-span-2"
                     >Descripción<textarea
                         v-model="form.description"
@@ -528,6 +835,23 @@ const theme = computed(() =>
                                     p.category || 'Catálogo'
                                 }}</span>
                             </div>
+                            <div class="product-commerce-badges">
+                                <span>{{ audienceLabel(p.audience) }}</span>
+                                <span v-if="p.size" class="variant"
+                                    >Talla {{ p.size }}</span
+                                >
+                                <span v-if="p.color" class="variant">{{
+                                    p.color
+                                }}</span>
+                                <span v-if="p.trending" class="trend"
+                                    ><Flame :size="12" /> Tendencia</span
+                                >
+                                <span
+                                    v-if="p.compare_at_minor"
+                                    class="promotion"
+                                    ><BadgePercent :size="12" /> Promoción</span
+                                >
+                            </div>
                             <p class="text-xs text-slate-400">{{ p.sku }}</p>
                             <h2 class="my-2 text-lg font-semibold">
                                 <Link
@@ -535,6 +859,12 @@ const theme = computed(() =>
                                     >{{ p.name }}</Link
                                 >
                             </h2>
+                            <p
+                                v-if="p.compare_at_minor"
+                                class="text-sm text-slate-400 line-through"
+                            >
+                                {{ money(p.compare_at_minor) }}
+                            </p>
                             <p class="text-2xl font-semibold">
                                 {{ money(p.price_minor) }}
                             </p>
@@ -569,12 +899,16 @@ const theme = computed(() =>
                             </button>
                         </article>
                     </div>
-                    <nav aria-label="Paginación" class="mt-7 flex gap-3">
+                    <nav
+                        aria-label="Paginación"
+                        class="catalog-pagination mt-7 flex gap-3"
+                    >
                         <template v-for="(l, i) in products.links" :key="i"
                             ><Link
                                 v-if="l.url"
                                 :href="l.url"
-                                class="rounded-lg border bg-white p-3"
+                                class="catalog-page-link rounded-lg border p-3"
+                                :class="{ active: l.active }"
                                 >{{
                                     i === 0
                                         ? 'Anterior'
@@ -624,11 +958,131 @@ const theme = computed(() =>
                         </div>
                     </div>
                     <template v-if="cart.length"
-                        ><p class="my-5 flex justify-between font-semibold">
+                        ><nav
+                            class="storefront-checkout-progress"
+                            aria-label="Pasos de compra"
+                        >
+                            <span class="complete"><b>1</b> Carrito</span>
+                            <span class="active"><b>2</b> Datos y entrega</span>
+                            <span><b>3</b> Pago</span>
+                        </nav>
+                        <p class="my-5 flex justify-between font-semibold">
                             <span>Subtotal estimado</span
                             ><span>{{ money(total) }}</span>
                         </p>
-                        <form class="grid gap-4" @submit.prevent="order">
+                        <section class="storefront-coupon-entry">
+                            <label for="storefront-coupon-code">
+                                <strong>¿Tienes un cupón?</strong>
+                                <span
+                                    >Escribe el código para conocer tu descuento
+                                    antes de registrarte.</span
+                                >
+                            </label>
+                            <div class="storefront-coupon-controls">
+                                <input
+                                    id="storefront-coupon-code"
+                                    v-model="checkout.coupon"
+                                    type="text"
+                                    maxlength="40"
+                                    autocomplete="off"
+                                    autocapitalize="characters"
+                                    placeholder="Ejemplo: DEMO10"
+                                    aria-label="Código de cupón"
+                                    @keyup.enter="review"
+                                />
+                                <button
+                                    type="button"
+                                    :disabled="quoting"
+                                    @click="review"
+                                >
+                                    {{
+                                        quoting
+                                            ? 'Validando…'
+                                            : checkout.coupon
+                                              ? 'Aplicar cupón'
+                                              : 'Calcular total'
+                                    }}
+                                </button>
+                            </div>
+                            <p
+                                v-if="quoteError"
+                                role="alert"
+                                class="storefront-coupon-error"
+                            >
+                                {{ quoteError }}
+                            </p>
+                            <div
+                                v-if="quote"
+                                class="storefront-quote-summary"
+                                aria-live="polite"
+                            >
+                                <p
+                                    v-if="
+                                        checkout.coupon &&
+                                        Number(quote.discount_minor) > 0
+                                    "
+                                    class="storefront-coupon-success"
+                                >
+                                    Cupón {{ checkout.coupon }} aplicado
+                                </p>
+                                <p v-if="Number(quote.discount_minor) > 0">
+                                    <span>Descuento</span>
+                                    <strong
+                                        >−{{
+                                            money(Number(quote.discount_minor))
+                                        }}</strong
+                                    >
+                                </p>
+                                <p v-if="Number(quote.delivery_minor) > 0">
+                                    <span>Entrega</span>
+                                    <strong>{{
+                                        money(Number(quote.delivery_minor))
+                                    }}</strong>
+                                </p>
+                                <p class="storefront-quote-total">
+                                    <span>Total</span>
+                                    <strong>{{
+                                        money(Number(quote.total_minor))
+                                    }}</strong>
+                                </p>
+                            </div>
+                        </section>
+                        <div
+                            v-if="!page.props.auth?.user"
+                            class="grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-5"
+                        >
+                            <p class="font-semibold text-emerald-950">
+                                Ingresa para continuar con tu compra
+                            </p>
+                            <p class="text-sm leading-relaxed text-emerald-800">
+                                Puedes explorar y armar el carrito libremente.
+                                Solo necesitas una cuenta al confirmar el
+                                pedido.
+                            </p>
+                            <Link
+                                :href="`/tienda/${tenant.slug}/cuenta`"
+                                class="rounded-xl bg-emerald-800 p-3 text-center text-sm font-semibold text-white"
+                                >Ingresar o crear cuenta</Link
+                            >
+                        </div>
+                        <div
+                            v-else-if="!customer"
+                            class="grid gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5"
+                        >
+                            <p class="font-semibold text-amber-950">
+                                Completa tu perfil de comprador
+                            </p>
+                            <p class="text-sm leading-relaxed text-amber-800">
+                                Antes de confirmar, guarda tus datos únicamente
+                                para esta tienda.
+                            </p>
+                            <Link
+                                :href="`/tienda/${tenant.slug}/cuenta`"
+                                class="rounded-xl bg-amber-800 p-3 text-center text-sm font-semibold text-white"
+                                >Completar perfil</Link
+                            >
+                        </div>
+                        <form v-else class="grid gap-4" @submit.prevent="order">
                             <label class="grid gap-2 text-sm"
                                 >Tu nombre<input
                                     v-model="checkout.customer_name"
@@ -667,19 +1121,21 @@ const theme = computed(() =>
                                     v-model="checkout.delivery_method"
                                     class="rounded-xl border p-3"
                                 >
-                                    <option value="pickup">
-                                        Recojo en tienda
-                                    </option>
                                     <option
-                                        v-if="settings.delivery_minor != null"
-                                        value="delivery"
+                                        v-for="option in deliveryOptions"
+                                        :key="option.value"
+                                        :value="option.value"
                                     >
-                                        Entrega ·
-                                        {{ money(settings.delivery_minor) }}
+                                        {{ option.label }}
+                                        {{
+                                            option.fee
+                                                ? ` · ${money(option.fee)}`
+                                                : ''
+                                        }}
                                     </option>
                                 </select></label
                             ><label
-                                v-if="checkout.delivery_method === 'delivery'"
+                                v-if="checkout.delivery_method !== 'pickup'"
                                 class="grid gap-2 text-sm"
                                 >Dirección y referencia<textarea
                                     v-model="checkout.address"
@@ -687,53 +1143,16 @@ const theme = computed(() =>
                                     rows="3"
                                     class="rounded-xl border p-3"
                                 /></label
-                            ><label class="grid gap-2 text-sm"
-                                >Cupón (opcional)<input
-                                    v-model="checkout.coupon"
-                                    class="rounded-xl border p-3" /></label
                             ><button
                                 type="button"
                                 :disabled="quoting"
                                 class="rounded-xl border p-3 font-medium"
                                 @click="review"
                             >
-                                {{ quoting ? 'Calculando…' : 'Revisar total' }}
+                                {{
+                                    quoting ? 'Calculando…' : 'Actualizar total'
+                                }}
                             </button>
-                            <p
-                                v-if="quoteError"
-                                role="alert"
-                                class="text-sm text-red-700"
-                            >
-                                {{ quoteError }}
-                            </p>
-                            <div
-                                v-if="quote"
-                                class="rounded-xl bg-emerald-50 p-4"
-                            >
-                                <p class="text-sm">
-                                    Descuento
-                                    {{ money(Number(quote.discount_minor)) }}
-                                </p>
-                                <p class="mt-2 text-xl font-semibold">
-                                    Total {{ money(Number(quote.total_minor)) }}
-                                </p>
-                            </div>
-                            <label
-                                v-if="page.props.auth?.user"
-                                class="flex items-start gap-3 text-sm"
-                                ><input
-                                    v-model="checkout.attach_account"
-                                    type="checkbox"
-                                    class="mt-1"
-                                /><span
-                                    >Guardar en mi cuenta de esta tienda.
-                                    <Link
-                                        :href="`/tienda/${tenant.slug}/cuenta`"
-                                        class="text-emerald-700 underline"
-                                        >Configurar mi perfil</Link
-                                    ></span
-                                ></label
-                            >
                             <div role="alert" class="text-sm text-red-700">
                                 <p
                                     v-for="(error, name) in checkout.errors"
@@ -761,6 +1180,72 @@ const theme = computed(() =>
                     >
                 </aside>
             </div>
-        </div></component
-    >
+        </div>
+        <footer v-if="!managing" class="storefront-public-footer">
+            <div>
+                <section v-if="settings.business_hours?.length">
+                    <strong>Horario de atención</strong>
+                    <p
+                        v-for="hours in settings.business_hours"
+                        :key="hours.day"
+                    >
+                        <span>{{ dayLabels[hours.day] }}</span>
+                        <span>{{
+                            hours.closed
+                                ? 'Cerrado'
+                                : `${hours.open} – ${hours.close}`
+                        }}</span>
+                    </p>
+                </section>
+                <section>
+                    <strong>Conecta con {{ tenant.name }}</strong>
+                    <a
+                        v-if="settings.instagram_url"
+                        :href="settings.instagram_url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >Instagram ↗</a
+                    >
+                    <a
+                        v-if="settings.facebook_url"
+                        :href="settings.facebook_url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >Facebook ↗</a
+                    >
+                    <a
+                        v-if="settings.tiktok_url"
+                        :href="settings.tiktok_url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >TikTok ↗</a
+                    >
+                    <a
+                        v-if="settings.contact_email"
+                        :href="`mailto:${settings.contact_email}`"
+                        >{{ settings.contact_email }}</a
+                    >
+                    <span
+                        v-if="
+                            !settings.instagram_url &&
+                            !settings.facebook_url &&
+                            !settings.tiktok_url &&
+                            !settings.contact_email
+                        "
+                        >Datos de contacto próximamente.</span
+                    >
+                </section>
+                <section>
+                    <strong>Opciones de entrega</strong>
+                    <span v-for="option in deliveryOptions" :key="option.value">
+                        {{ option.label
+                        }}{{ option.fee ? ` · ${money(option.fee)}` : '' }}
+                    </span>
+                    <small v-if="settings.custom_domain">
+                        Dominio: {{ settings.custom_domain }}
+                    </small>
+                </section>
+            </div>
+        </footer>
+    </component>
 </template>

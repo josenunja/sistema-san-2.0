@@ -187,8 +187,8 @@ const profile = useForm({
                     v-if="!orders?.data.length"
                     class="p-8 text-sm text-slate-400"
                 >
-                    Todavía no hay pedidos asociados. Al comprar, elige guardar
-                    el pedido en tu cuenta.
+                    Todavía no hay pedidos asociados. Las compras que realices
+                    en esta tienda quedarán vinculadas a tu cuenta.
                 </p>
             </div></template
         >

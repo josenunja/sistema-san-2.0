@@ -1,5 +1,13 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import {
+    ArrowRight,
+    Check,
+    KeyRound,
+    Mail,
+    ShieldCheck,
+    Store,
+} from '@lucide/vue';
 type Tenant = {
     id: number;
     name: string;
@@ -18,7 +26,12 @@ defineProps<{
     }[];
 }>();
 const page = usePage();
-const form = useForm({ name: '', slug: '', plan: 'inicial' });
+const form = useForm({
+    name: '',
+    slug: '',
+    plan: 'inicial',
+    owner_email: '',
+});
 const invite = useForm({ tenant_id: '', email: '', role: 'owner' });
 function update(t: Tenant) {
     router.patch(`/plataforma/${t.id}`, { active: !t.active, plan: t.plan });
@@ -50,16 +63,30 @@ function plan(t: Tenant) {
             >
                 {{ page.props.success }}
             </p>
-            <div class="mt-8 grid gap-6 md:grid-cols-2">
+            <div class="mt-8 grid gap-6 md:grid-cols-[1.2fr_.8fr]">
                 <form
-                    class="grid gap-4 rounded-2xl border bg-white p-6"
+                    class="grid gap-4 rounded-2xl border bg-white p-6 shadow-sm"
                     @submit.prevent="
                         form.post('/plataforma', {
                             onSuccess: () => form.reset(),
                         })
                     "
                 >
-                    <h2 class="text-xl font-semibold">Crear empresa</h2>
+                    <div class="flex items-start gap-3">
+                        <span
+                            class="grid h-11 w-11 place-items-center rounded-xl bg-emerald-100 text-emerald-800"
+                            ><Store :size="21"
+                        /></span>
+                        <div>
+                            <h2 class="text-xl font-semibold">
+                                Crear empresa y dar acceso
+                            </h2>
+                            <p class="mt-1 text-sm text-slate-500">
+                                La tienda y la invitación de su propietario se
+                                crean juntas.
+                            </p>
+                        </div>
+                    </div>
                     <label class="grid gap-2 text-sm"
                         >Nombre<input
                             v-model="form.name"
@@ -84,7 +111,22 @@ function plan(t: Tenant) {
                                 {{ p.name }}
                             </option>
                         </select></label
+                    ><label class="grid gap-2 text-sm"
+                        >Correo del propietario<input
+                            v-model="form.owner_email"
+                            required
+                            type="email"
+                            autocomplete="email"
+                            placeholder="propietario@negocio.com"
+                            class="rounded-xl border p-3"
+                    /></label>
+                    <p
+                        class="flex gap-2 rounded-xl bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-900"
                     >
+                        <ShieldCheck :size="17" class="shrink-0" /> El
+                        administrador no crea ni conoce la contraseña. El
+                        propietario la elige al aceptar su enlace privado.
+                    </p>
                     <p
                         v-for="(e, k) in form.errors"
                         :key="k"
@@ -96,18 +138,72 @@ function plan(t: Tenant) {
                         :disabled="form.processing"
                         class="rounded-xl bg-emerald-800 p-3 text-white"
                     >
-                        Crear empresa
+                        <span class="flex items-center justify-center gap-2"
+                            >Crear y enviar invitación <ArrowRight :size="16"
+                        /></span>
                     </button>
                 </form>
-                <form
-                    class="grid gap-4 rounded-2xl border bg-white p-6"
-                    @submit.prevent="invite.post('/invitaciones')"
+                <aside
+                    class="rounded-2xl bg-slate-950 p-7 text-white shadow-xl"
                 >
-                    <h2 class="text-xl font-semibold">
-                        Invitar al primer propietario
+                    <span
+                        class="text-xs font-bold tracking-[.18em] text-emerald-400"
+                        >FLUJO SEGURO</span
+                    >
+                    <h2 class="mt-3 text-2xl font-semibold">
+                        Cada vendedor construye su propia tienda.
                     </h2>
+                    <ol class="mt-7 grid gap-5 text-sm text-slate-300">
+                        <li class="flex gap-3">
+                            <span
+                                class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/10 text-emerald-300"
+                                ><Mail :size="16" /></span
+                            ><span
+                                ><strong class="block text-white"
+                                    >1. Recibe la invitación</strong
+                                >El enlace vence en 48 horas y solo funciona una
+                                vez.</span
+                            >
+                        </li>
+                        <li class="flex gap-3">
+                            <span
+                                class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/10 text-emerald-300"
+                                ><KeyRound :size="16" /></span
+                            ><span
+                                ><strong class="block text-white"
+                                    >2. Crea su acceso</strong
+                                >Define su contraseña y activa la verificación
+                                en dos pasos.</span
+                            >
+                        </li>
+                        <li class="flex gap-3">
+                            <span
+                                class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/10 text-emerald-300"
+                                ><Check :size="16" /></span
+                            ><span
+                                ><strong class="block text-white"
+                                    >3. Diseña y publica</strong
+                                >Sube logo, datos y elige Clásico, Urban o
+                                Elegante.</span
+                            >
+                        </li>
+                    </ol>
+                </aside>
+            </div>
+            <details class="mt-6 rounded-2xl border bg-white p-6">
+                <summary class="cursor-pointer font-semibold">
+                    Invitar propietario de una empresa creada anteriormente
+                </summary>
+                <form
+                    class="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto]"
+                    @submit.prevent="
+                        invite.post('/invitaciones', {
+                            onSuccess: () => invite.reset('email'),
+                        })
+                    "
+                >
                     <label class="grid gap-2 text-sm"
-                        >Empresa nueva<select
+                        >Empresa<select
                             v-model="invite.tenant_id"
                             required
                             class="rounded-xl border p-3"
@@ -122,32 +218,27 @@ function plan(t: Tenant) {
                             </option>
                         </select></label
                     ><label class="grid gap-2 text-sm"
-                        >Correo de su propietario<input
+                        >Correo del propietario<input
                             v-model="invite.email"
                             required
                             type="email"
                             class="rounded-xl border p-3"
                     /></label>
-                    <p class="text-sm text-slate-500">
-                        Solo se permite iniciar empresas sin miembros. Para
-                        equipos existentes, su propietario gestiona las
-                        invitaciones.
-                    </p>
-                    <p
-                        v-for="(e, k) in invite.errors"
-                        :key="k"
-                        class="text-sm text-red-700"
-                    >
-                        {{ e }}
-                    </p>
                     <button
                         :disabled="invite.processing"
-                        class="rounded-xl border p-3 font-medium"
+                        class="self-end rounded-xl border px-5 py-3 font-medium"
                     >
-                        Crear invitación
+                        Enviar acceso
                     </button>
+                    <p
+                        v-for="(error, field) in invite.errors"
+                        :key="field"
+                        class="text-sm text-red-700 md:col-span-3"
+                    >
+                        {{ error }}
+                    </p>
                 </form>
-            </div>
+            </details>
             <div class="mt-8 overflow-auto rounded-2xl border bg-white">
                 <table class="w-full text-left text-sm">
                     <thead class="bg-slate-50">

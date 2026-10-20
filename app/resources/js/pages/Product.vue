@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
+import { BadgePercent, Flame } from '@lucide/vue';
 import { money } from '@/lib/commerce';
 const props = defineProps<{
     tenant: { name: string; slug: string };
@@ -9,13 +10,25 @@ const props = defineProps<{
         name: string;
         sku: string;
         price_minor: number;
+        compare_at_minor: number | null;
         category: string;
+        audience: 'women' | 'men' | 'kids' | 'unisex';
+        trending: boolean;
         variant_group: string;
+        size: string;
+        color: string;
         description: string;
         published: boolean;
     };
     images: string[];
-    variants: { id: number; name: string; price_minor: number }[];
+    variants: {
+        id: number;
+        name: string;
+        price_minor: number;
+        size: string;
+        color: string;
+        available: number;
+    }[];
     available: number;
 }>();
 const selected = ref(props.images[0] || '');
@@ -86,10 +99,43 @@ function add() {
                 <p class="text-xs tracking-widest text-slate-500">
                     {{ product.category }} · {{ product.sku }}
                 </p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <span
+                        v-if="product.trending"
+                        class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800"
+                        ><Flame :size="13" /> Tendencia</span
+                    >
+                    <span
+                        v-if="product.compare_at_minor"
+                        class="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700"
+                        ><BadgePercent :size="13" /> Promoción</span
+                    >
+                    <span
+                        v-if="product.size"
+                        class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
+                        >Talla {{ product.size }}</span
+                    >
+                    <span
+                        v-if="product.color"
+                        class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
+                        >{{ product.color }}</span
+                    >
+                </div>
                 <h1 class="mt-4 text-4xl font-semibold tracking-tight">
                     {{ product.name }}
                 </h1>
-                <p class="mt-6 text-3xl font-semibold">
+                <p
+                    v-if="product.compare_at_minor"
+                    class="mt-6 text-base text-slate-400 line-through"
+                >
+                    {{ money(product.compare_at_minor) }}
+                </p>
+                <p
+                    class="text-3xl font-semibold"
+                    :class="
+                        product.compare_at_minor ? 'mt-1 text-red-700' : 'mt-6'
+                    "
+                >
                     {{ money(product.price_minor) }}
                 </p>
                 <p
@@ -110,7 +156,19 @@ function add() {
                                     ? 'border-emerald-800 bg-emerald-50'
                                     : ''
                             "
-                            >{{ v.name }}</Link
+                            ><strong class="block">{{
+                                [v.size && `Talla ${v.size}`, v.color]
+                                    .filter(Boolean)
+                                    .join(' · ') || v.name
+                            }}</strong>
+                            <small class="mt-1 block text-xs text-slate-500"
+                                >{{ money(v.price_minor) }} ·
+                                {{
+                                    v.available > 0
+                                        ? `${v.available} disponibles`
+                                        : 'Agotado'
+                                }}</small
+                            ></Link
                         >
                     </div>
                 </div>

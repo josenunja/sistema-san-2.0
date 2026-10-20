@@ -20,18 +20,16 @@ class CheckoutController extends Controller
     {
         $base = $request->validate(['key' => 'required|uuid']);
         $data = $request->validate([...BusinessController::orderRules(), 'expected_total_minor' => 'required|integer|min:0|max:9999999999999']);
-        $data['customer_id'] = null;
-        if ($request->boolean('attach_account')) {
-            abort_unless($request->user()?->hasVerifiedEmail(), 403);
-            $customerId = DB::table('customers')->where('tenant_id', $request->attributes->get('tenant')->id)->where('user_id', $request->user()->id)->value('id');
-            if (! $customerId) {
-                $commerce->fail('Crea primero tu perfil de comprador en esta tienda.');
-            }
-            $data['customer_id'] = $customerId;
+        $tenant = $request->attributes->get('tenant');
+        $user = $request->user();
+        abort_unless($user !== null, 401);
+        $customerId = DB::table('customers')->where('tenant_id', $tenant->id)->where('user_id', $user->id)->value('id');
+        if (! $customerId) {
+            $commerce->fail('Crea o completa primero tu perfil de comprador en esta tienda.');
         }
+        $data['customer_id'] = $customerId;
         $data['cash_minor'] = 0;
         $data['cash_session_id'] = null;
-        $tenant = $request->attributes->get('tenant');
         $result = $commerce->run($tenant->id, $base['key'], 'checkout', ['session' => hash('sha256', $request->session()->getId()), ...$data], fn () => $commerce->createOrder($tenant->id, $data, false));
         $request->session()->put('tracking.'.$tenant->slug, ['id' => $result['id'], 'token' => $result['token']]);
 
@@ -40,14 +38,19 @@ class CheckoutController extends Controller
 
     public function quote(Request $request, Commerce $commerce): JsonResponse
     {
-        $data = $request->validate(['items' => 'required|array|min:1|max:100', 'items.*.product_id' => 'required|integer', 'items.*.quantity' => 'required|integer|min:1|max:10000', 'coupon' => 'nullable|string|max:40', 'delivery_method' => ['required', Rule::in(['pickup', 'delivery'])]]);
+        $data = $request->validate(['items' => 'required|array|min:1|max:100', 'items.*.product_id' => 'required|integer', 'items.*.quantity' => 'required|integer|min:1|max:10000', 'coupon' => 'nullable|string|max:40', 'delivery_method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])]]);
         $tenant = $request->attributes->get('tenant');
         $quote = $commerce->quote($tenant->id, $data['items'], $data['coupon'] ?? null, true);
         $settings = json_decode($tenant->settings, true) ?: [];
-        if ($data['delivery_method'] === 'delivery' && ! isset($settings['delivery_minor'])) {
-            $commerce->fail('No se ha configurado entrega. Selecciona recojo.');
+        $enabledMethods = $settings['delivery_methods'] ?? ['pickup', ...(isset($settings['delivery_minor']) ? ['delivery'] : [])];
+        if (! in_array($data['delivery_method'], $enabledMethods, true)) {
+            $commerce->fail('Este método de entrega no está disponible en la tienda.');
         }
-        $quote['delivery_minor'] = $data['delivery_method'] === 'delivery' ? (int) $settings['delivery_minor'] : 0;
+        $feeKey = $data['delivery_method'].'_minor';
+        if ($data['delivery_method'] !== 'pickup' && ! isset($settings[$feeKey])) {
+            $commerce->fail('No se ha configurado la tarifa de este método de entrega.');
+        }
+        $quote['delivery_minor'] = $data['delivery_method'] === 'pickup' ? 0 : (int) $settings[$feeKey];
         $quote['total_minor'] += $quote['delivery_minor'];
         unset($quote['coupon_id']);
 
@@ -96,7 +99,7 @@ class CheckoutController extends Controller
         $settings = json_decode($tenant->settings, true) ?: [];
         $message = 'Pedido '.substr($order->id, 0, 8).' · '.$tenant->name."\n".$lines->map(fn ($l) => $l->quantity.' x '.$l->name.' · '.$l->sku."\n".url('/tienda/'.$tenant->slug.'/producto/'.$l->product_id))->implode("\n")."\nTotal S/ ".number_format($order->total_minor / 100, 2, '.', '');
 
-        return Inertia::render('Order', ['tenant' => ['name' => $tenant->name, 'slug' => $tenant->slug], 'order' => $order, 'lines' => $lines, 'payments' => DB::table('payments')->where('tenant_id', $tenant->id)->where('order_id', $order->id)->get(['id', 'amount_minor', 'method', 'status', 'created_at']), 'paid' => $commerce->paid($tenant->id, $order->id), 'refunds' => [], 'managing' => false, 'role' => 'guest', 'cashSessions' => [], 'paymentUrl' => $request->routeIs('account.order') ? '/tienda/'.$tenant->slug.'/cuenta/pedido/'.$order->id.'/pago' : '/tienda/'.$tenant->slug.'/pago', 'trackingToken' => $request->routeIs('account.order') ? null : $request->session()->get('tracking.'.$tenant->slug.'.token'), 'paymentInstructions' => array_intersect_key($settings, array_flip(['yape_instructions', 'bcp_instructions'])), 'whatsapp' => empty($settings['whatsapp']) ? null : 'https://wa.me/'.$settings['whatsapp'].'?text='.rawurlencode($message)]);
+        return Inertia::render('Order', ['tenant' => ['name' => $tenant->name, 'slug' => $tenant->slug], 'order' => $order, 'lines' => $lines, 'payments' => DB::table('payments')->where('tenant_id', $tenant->id)->where('order_id', $order->id)->get(['id', 'amount_minor', 'method', 'status', 'created_at']), 'events' => DB::table('order_events')->where('tenant_id', $tenant->id)->where('order_id', $order->id)->orderBy('created_at')->orderBy('id')->get(['id', 'kind', 'status', 'title', 'message', 'created_at']), 'paid' => $commerce->paid($tenant->id, $order->id), 'refunds' => [], 'managing' => false, 'role' => 'guest', 'cashSessions' => [], 'paymentUrl' => $request->routeIs('account.order') ? '/tienda/'.$tenant->slug.'/cuenta/pedido/'.$order->id.'/pago' : '/tienda/'.$tenant->slug.'/pago', 'trackingToken' => $request->routeIs('account.order') ? null : $request->session()->get('tracking.'.$tenant->slug.'.token'), 'paymentInstructions' => array_intersect_key($settings, array_flip(['yape_instructions', 'bcp_instructions'])), 'whatsapp' => empty($settings['whatsapp']) ? null : 'https://wa.me/'.$settings['whatsapp'].'?text='.rawurlencode($message)]);
     }
 
     public function payment(Request $request, Commerce $commerce): RedirectResponse

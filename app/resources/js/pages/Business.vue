@@ -1234,15 +1234,21 @@ const reportCards = [
             ><div class="rounded-2xl border bg-white p-7">
                 <h2 class="text-xl font-semibold">Tu tienda pública</h2>
                 <p class="mt-3 text-slate-500">
-                    Personaliza la bienvenida, el color, el contacto y los
-                    medios de pago. Los cambios se reflejan en la tienda al
-                    guardar.
+                    Abre el diseñador para cambiar tu logo, datos y estilo
+                    visual. La configuración de entrega y medios de pago se
+                    mantiene en esta sección.
                 </p>
-                <Link
-                    :href="`/tienda/${tenant.slug}`"
-                    class="mt-6 inline-block rounded-xl bg-emerald-800 px-5 py-3 text-white"
-                    >Ver tienda ↗</Link
-                >
+                <div class="mt-6 flex flex-wrap gap-3">
+                    <Link
+                        :href="`/gestion/${tenant.slug}/configurar`"
+                        class="inline-block rounded-xl bg-emerald-800 px-5 py-3 text-white"
+                        >Diseñar mi tienda</Link
+                    ><Link
+                        :href="`/tienda/${tenant.slug}`"
+                        class="inline-block rounded-xl border px-5 py-3"
+                        >Ver tienda ↗</Link
+                    >
+                </div>
             </div>
             <div
                 class="mt-6 rounded-2xl border bg-amber-50 p-6 text-sm text-amber-900"

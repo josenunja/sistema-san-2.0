@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { CheckCircle2, Clock3 } from '@lucide/vue';
 import BusinessShell from '@/components/BusinessShell.vue';
 import { money, minor, state, localDate } from '@/lib/commerce';
 type Line = {
@@ -19,6 +20,14 @@ type Payment = {
     method: string;
     status: string;
     reference?: string;
+    created_at: string;
+};
+type OrderEvent = {
+    id: number;
+    kind: string;
+    status: string | null;
+    title: string;
+    message: string;
     created_at: string;
 };
 const props = defineProps<{
@@ -40,6 +49,7 @@ const props = defineProps<{
     };
     lines: Line[];
     payments: Payment[];
+    events: OrderEvent[];
     paid: number;
     refunds: { amount_minor: number }[];
     managing: boolean;
@@ -166,6 +176,26 @@ const nextDelivery = computed(
             props.order.delivery_status
         ] || null,
 );
+const nextCustomerStep = computed(() => {
+    if (props.order.status === 'cancelled')
+        return 'Este pedido fue cancelado. Puedes volver a la tienda y realizar uno nuevo.';
+    if (props.order.status === 'expired')
+        return 'La reserva venció. Vuelve a la tienda para revisar existencias y crear otro pedido.';
+    if (props.order.status === 'reserved' && due.value > 0)
+        return 'Registra tu constancia de pago. La tienda la revisará antes de confirmar la venta.';
+    if (props.order.status === 'reserved')
+        return 'El pago está cubierto. Espera que la tienda confirme la venta.';
+    if (props.order.delivery_status === 'pending')
+        return 'La venta está confirmada. La tienda empezará a preparar tu pedido.';
+    if (props.order.delivery_status === 'preparing')
+        return 'Tu pedido está en preparación. Te avisaremos cuando esté listo.';
+    if (props.order.delivery_status === 'ready')
+        return props.order.delivery_method === 'pickup'
+            ? 'Tu pedido está listo para recoger en la tienda.'
+            : 'Tu pedido está listo para iniciar la entrega.';
+
+    return 'Tu pedido fue entregado. Gracias por comprar en esta tienda.';
+});
 function printTicket() {
     window.print();
 }
@@ -246,6 +276,44 @@ function printTicket() {
                 }}</strong>
             </article>
         </div>
+        <section class="order-status-experience">
+            <div class="order-next-step">
+                <Clock3 :size="21" />
+                <div>
+                    <span>SIGUIENTE PASO</span>
+                    <p>{{ nextCustomerStep }}</p>
+                </div>
+            </div>
+            <div class="order-timeline">
+                <div class="order-timeline-heading">
+                    <div>
+                        <span>SEGUIMIENTO EN TIEMPO REAL</span>
+                        <h2>Historia de tu pedido</h2>
+                    </div>
+                    <strong>{{ events.length }} actualizaciones</strong>
+                </div>
+                <ol v-if="events.length">
+                    <li v-for="event in events" :key="event.id">
+                        <span class="order-event-marker">
+                            <CheckCircle2 :size="17" />
+                        </span>
+                        <div>
+                            <div class="order-event-title">
+                                <strong>{{ event.title }}</strong>
+                                <time :datetime="event.created_at">{{
+                                    localDate(event.created_at)
+                                }}</time>
+                            </div>
+                            <p>{{ event.message }}</p>
+                        </div>
+                    </li>
+                </ol>
+                <p v-else class="order-timeline-empty">
+                    El historial aparecerá aquí cuando la tienda actualice tu
+                    pedido.
+                </p>
+            </div>
+        </section>
         <div class="overflow-auto rounded-2xl border bg-white">
             <table class="w-full text-left text-sm">
                 <thead class="bg-slate-50">

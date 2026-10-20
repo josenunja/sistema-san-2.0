@@ -44,7 +44,7 @@ class CustomerAccountController extends Controller
         $request->session()->regenerate();
         DB::afterCommit(fn () => event(new Registered($user)));
 
-        return back()->with('success', 'Cuenta de comprador creada. Verifica tu correo para consultar pedidos asociados.');
+        return back()->with('success', 'Cuenta de comprador creada. Ya puedes volver a la tienda y confirmar tu pedido; verifica tu correo para consultar el historial asociado.');
     }
 
     public function profile(Request $request, Commerce $commerce): RedirectResponse

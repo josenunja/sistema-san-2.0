@@ -24,6 +24,8 @@ class CommerceTest extends TestCase
 
     private Commerce $commerce;
 
+    private User $user;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -36,11 +38,12 @@ class CommerceTest extends TestCase
         DB::select("select set_config('app.tenant_id', ?, true)", [(string) $this->tenant]);
         $this->warehouse = DB::table('warehouses')->insertGetId(['tenant_id' => $this->tenant, 'name' => 'Principal', 'branch' => 'Local']);
         $this->product = DB::table('products')->insertGetId(['tenant_id' => $this->tenant, 'name' => 'Producto', 'sku' => 'SKU', 'price_minor' => 15000, 'published' => true]);
-        $user = User::factory()->create();
-        $user->forceFill(['two_factor_secret' => encrypt('TESTSECRET'), 'two_factor_confirmed_at' => now()])->save();
-        $this->actingAs($user);
-        DB::table('memberships')->insert(['tenant_id' => $this->tenant, 'user_id' => $user->id, 'role' => 'owner']);
-        $this->cash = DB::table('cash_sessions')->insertGetId(['tenant_id' => $this->tenant, 'user_id' => $user->id, 'warehouse_id' => $this->warehouse, 'opening_minor' => 10000]);
+        $this->user = User::factory()->create();
+        $this->user->forceFill(['two_factor_secret' => encrypt('TESTSECRET'), 'two_factor_confirmed_at' => now()])->save();
+        $this->actingAs($this->user);
+        DB::table('memberships')->insert(['tenant_id' => $this->tenant, 'user_id' => $this->user->id, 'role' => 'owner']);
+        DB::table('customers')->insert(['tenant_id' => $this->tenant, 'user_id' => $this->user->id, 'name' => 'Comprador web', 'phone' => '000000000', 'email' => $this->user->email]);
+        $this->cash = DB::table('cash_sessions')->insertGetId(['tenant_id' => $this->tenant, 'user_id' => $this->user->id, 'warehouse_id' => $this->warehouse, 'opening_minor' => 10000]);
         $this->commerce = app(Commerce::class);
         $this->operation('receive', fn () => $this->commerce->receive($this->tenant, ['warehouse_id' => $this->warehouse, 'product_id' => $this->product, 'quantity' => 2, 'unit_cost_minor' => 6000, 'supplier' => 'Supplier', 'reference' => 'OPEN']));
     }
@@ -98,6 +101,72 @@ class CommerceTest extends TestCase
         $this->operation('web_coupon', fn () => $this->commerce->createOrder($this->tenant, $data, false));
         $this->expectException(ValidationException::class);
         $this->operation('web_coupon_again', fn () => $this->commerce->createOrder($this->tenant, $data, false));
+    }
+
+    public function test_store_delivery_methods_keep_their_own_configured_fee(): void
+    {
+        DB::table('tenants')->where('id', $this->tenant)->update(['settings' => json_encode([
+            'delivery_methods' => ['pickup', 'delivery', 'courier', 'shipping'],
+            'delivery_minor' => 800,
+            'courier_minor' => 1250,
+            'shipping_minor' => 1890,
+        ])]);
+        $data = [...$this->orderData(), 'delivery_method' => 'courier', 'address' => 'Av. Prueba 123'];
+
+        $order = $this->operation('courier_order', fn () => $this->commerce->createOrder($this->tenant, $data, false));
+
+        $this->assertSame(16250, $order['total_minor']);
+        $this->assertSame(1250, (int) DB::table('orders')->where('id', $order['id'])->value('delivery_minor'));
+        $this->assertSame('courier', DB::table('orders')->where('id', $order['id'])->value('delivery_method'));
+    }
+
+    public function test_customer_receives_a_complete_order_timeline_and_notifications(): void
+    {
+        DB::table('tenants')->where('id', $this->tenant)->update(['settings' => json_encode([
+            'delivery_methods' => ['pickup'],
+            'yape_instructions' => 'Cuenta de pruebas',
+        ])]);
+        $customer = DB::table('customers')
+            ->where('tenant_id', $this->tenant)
+            ->where('user_id', $this->user->id)
+            ->value('id');
+        $data = [...$this->orderData(), 'customer_id' => $customer];
+        $order = $this->operation('timeline_order', fn () => $this->commerce->createOrder($this->tenant, $data, false));
+        $payment = $this->operation('timeline_payment', fn () => $this->commerce->pay($this->tenant, [
+            'order_id' => $order['id'],
+            'amount_minor' => 15000,
+            'method' => 'yape',
+            'reference' => 'TIMELINE-001',
+        ], false));
+        $this->operation('timeline_verify', fn () => $this->commerce->verifyPayment($this->tenant, $payment['id'], true));
+        $this->operation('timeline_confirm', fn () => $this->commerce->confirm($this->tenant, $order['id']));
+
+        foreach (['preparing', 'ready', 'delivered'] as $status) {
+            $this->post('/gestion/commerce-test/operacion', [
+                'key' => (string) Str::uuid(),
+                'action' => 'delivery',
+                'order_id' => $order['id'],
+                'status' => $status,
+            ])->assertRedirect();
+        }
+
+        $this->assertSame([
+            'order_created',
+            'payment_submitted',
+            'payment_verified',
+            'order_confirmed',
+            'delivery_preparing',
+            'delivery_ready',
+            'delivery_delivered',
+        ], DB::table('order_events')->where('order_id', $order['id'])->orderBy('id')->pluck('kind')->all());
+        $this->assertSame(7, DB::table('customer_notifications')->where('order_id', $order['id'])->count());
+
+        $this->get('/tienda/commerce-test/cuenta/pedido/'.$order['id'])
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Order')
+                ->has('events', 7)
+                ->where('events.6.title', 'Pedido entregado'));
     }
 
     public function test_credit_150_abono_50_then_payment_100_is_exact_and_idempotent(): void
@@ -175,6 +244,15 @@ class CommerceTest extends TestCase
     public function test_guest_price_and_tenant_manipulation_cannot_override_checkout(): void
     {
         $data = [...$this->orderData(), 'key' => (string) Str::uuid(), 'tenant_id' => 999999, 'expected_total_minor' => 1, 'price_minor' => 1];
+        auth()->logout();
+        $this->post('/tienda/commerce-test/pedido', $data)->assertRedirect(route('login'));
+        $this->assertSame(0, DB::table('orders')->count());
+        $this->actingAs(User::factory()->create());
+        $data['expected_total_minor'] = 15000;
+        $this->post('/tienda/commerce-test/pedido', $data)->assertSessionHasErrors('operation');
+        $this->assertSame(0, DB::table('orders')->count());
+        $this->actingAs($this->user);
+        $data['expected_total_minor'] = 1;
         $this->post('/tienda/commerce-test/pedido', $data)->assertSessionHasErrors('operation');
         $this->assertSame(0, DB::table('orders')->count());
         $data['expected_total_minor'] = 15000;

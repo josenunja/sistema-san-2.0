@@ -14,7 +14,7 @@ class ExportController extends Controller
         abort_unless($request->attributes->get('membership')->role === 'owner', 403);
         $tenant = $request->attributes->get('tenant')->id;
         $query = match ($scope) {
-            'productos' => DB::table('products')->where('tenant_id', $tenant)->orderBy('sku')->select(['sku', 'name', 'category', 'variant_group', 'price_minor', 'published']),
+            'productos' => DB::table('products')->where('tenant_id', $tenant)->orderBy('sku')->select(['sku', 'name', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'price_minor', 'compare_at_minor', 'published']),
             'clientes' => DB::table('customers')->where('tenant_id', $tenant)->orderBy('id')->select(['id', 'name', 'phone', 'email', 'address', 'marketing_consent']),
             'ventas' => DB::table('orders')->where('tenant_id', $tenant)->where('status', 'confirmed')->orderBy('created_at')->select(['id', 'created_at', 'customer_name', 'channel', 'subtotal_minor', 'discount_minor', 'total_minor', 'returned_minor']),
             'inventario' => DB::table('stock_positions')->where('tenant_id', $tenant)->orderBy('product_id')->select(['warehouse_id', 'product_id', 'physical', 'reserved', 'blocked', 'offline']),

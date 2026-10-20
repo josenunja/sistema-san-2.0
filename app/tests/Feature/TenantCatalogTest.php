@@ -66,6 +66,80 @@ class TenantCatalogTest extends TestCase
         $this->get('/tienda/alpha-test')->assertOk()->assertSee('Visible')->assertDontSee('Oculto');
     }
 
+    public function test_guest_can_apply_store_coupon_before_creating_an_account(): void
+    {
+        DB::select("select set_config('app.tenant_id', ?, true)", [(string) $this->tenantA]);
+        DB::table('tenants')->where('id', $this->tenantA)->update([
+            'settings' => json_encode(['delivery_methods' => ['pickup']], JSON_THROW_ON_ERROR),
+        ]);
+        $product = DB::table('products')->insertGetId([
+            'tenant_id' => $this->tenantA,
+            'sku' => 'COUPON-PUBLIC',
+            'name' => 'Producto con cupón',
+            'price_minor' => 10000,
+            'published' => true,
+        ]);
+        DB::table('coupons')->insert([
+            'tenant_id' => $this->tenantA,
+            'code' => 'SAVE10',
+            'percent' => 10,
+            'usage_limit' => 5,
+            'starts_at' => now()->subHour(),
+            'ends_at' => now()->addHour(),
+            'channel' => 'web',
+        ]);
+
+        $this->postJson('/tienda/alpha-test/cotizar', [
+            'items' => [['product_id' => $product, 'quantity' => 2]],
+            'coupon' => 'save10',
+            'delivery_method' => 'pickup',
+        ])->assertOk()->assertJson([
+            'subtotal_minor' => 20000,
+            'discount_minor' => 2000,
+            'delivery_minor' => 0,
+            'total_minor' => 18000,
+        ]);
+
+        $this->assertGuest();
+    }
+
+    public function test_home_marketplace_combines_only_published_products_from_active_stores(): void
+    {
+        DB::select("select set_config('app.tenant_id', ?, true)", [(string) $this->tenantA]);
+        DB::table('products')->insert([
+            ['tenant_id' => $this->tenantA, 'sku' => 'PUBLIC-A', 'name' => 'Producto Alpha', 'price_minor' => 2500, 'published' => true],
+            ['tenant_id' => $this->tenantA, 'sku' => 'PRIVATE-A', 'name' => 'Producto privado', 'price_minor' => 3000, 'published' => false],
+        ]);
+        DB::select("select set_config('app.tenant_id', ?, true)", [(string) $this->tenantB]);
+        DB::table('products')->insert(['tenant_id' => $this->tenantB, 'sku' => 'PUBLIC-B', 'name' => 'Producto Beta', 'price_minor' => 4500, 'published' => true]);
+        $inactive = DB::table('tenants')->insertGetId(['slug' => 'inactive-test', 'name' => 'Inactive', 'active' => false]);
+        DB::select("select set_config('app.tenant_id', ?, true)", [(string) $inactive]);
+        DB::table('products')->insert(['tenant_id' => $inactive, 'sku' => 'INACTIVE', 'name' => 'Producto inactivo', 'price_minor' => 5000, 'published' => true]);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Producto Alpha')
+            ->assertSee('Producto Beta')
+            ->assertDontSee('Producto privado')
+            ->assertDontSee('Producto inactivo');
+    }
+
+    public function test_marketplace_navigation_filters_audience_trends_and_promotions(): void
+    {
+        DB::select("select set_config('app.tenant_id', ?, true)", [(string) $this->tenantA]);
+        DB::table('products')->insert([
+            ['tenant_id' => $this->tenantA, 'sku' => 'WOMEN', 'name' => 'Vestido urbano', 'price_minor' => 8900, 'compare_at_minor' => null, 'published' => true, 'audience' => 'women', 'trending' => false],
+            ['tenant_id' => $this->tenantA, 'sku' => 'MEN', 'name' => 'Casaca tendencia', 'price_minor' => 12900, 'compare_at_minor' => null, 'published' => true, 'audience' => 'men', 'trending' => true],
+            ['tenant_id' => $this->tenantA, 'sku' => 'KIDS', 'name' => 'Polo infantil en oferta', 'price_minor' => 3500, 'compare_at_minor' => 4900, 'published' => true, 'audience' => 'kids', 'trending' => false],
+        ]);
+
+        $this->get('/?section=women')->assertOk()->assertSee('Vestido urbano')->assertDontSee('Casaca tendencia');
+        $this->get('/?section=men')->assertOk()->assertSee('Casaca tendencia')->assertDontSee('Vestido urbano');
+        $this->get('/?section=kids')->assertOk()->assertSee('Polo infantil en oferta')->assertDontSee('Vestido urbano');
+        $this->get('/?section=trends')->assertOk()->assertSee('Casaca tendencia')->assertDontSee('Polo infantil en oferta');
+        $this->get('/?section=promotions')->assertOk()->assertSee('Polo infantil en oferta')->assertDontSee('Casaca tendencia');
+    }
+
     public function test_cross_tenant_sql_write_is_rejected(): void
     {
         DB::select("select set_config('app.tenant_id', ?, true)", [(string) $this->tenantA]);

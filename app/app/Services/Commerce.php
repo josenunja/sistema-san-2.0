@@ -220,12 +220,20 @@ class Commerce
             }
         }
         $settings = json_decode(DB::table('tenants')->where('id', $tenant)->value('settings'), true) ?: [];
+        $enabledMethods = $settings['delivery_methods'] ?? [
+            'pickup',
+            ...(isset($settings['delivery_minor']) ? ['delivery'] : []),
+        ];
+        if (! in_array($data['delivery_method'], $enabledMethods, true)) {
+            $this->fail('Este método de entrega no está disponible en la tienda.');
+        }
         $delivery = 0;
-        if ($data['delivery_method'] === 'delivery') {
-            if (! isset($settings['delivery_minor'])) {
-                $this->fail('La tienda aún no configuró su tarifa de entrega. Selecciona recojo.');
+        if ($data['delivery_method'] !== 'pickup') {
+            $feeKey = $data['delivery_method'].'_minor';
+            if (! isset($settings[$feeKey])) {
+                $this->fail('La tienda aún no configuró la tarifa de este método de entrega.');
             }
-            $delivery = (int) $settings['delivery_minor'];
+            $delivery = (int) $settings[$feeKey];
             if (empty($data['address'])) {
                 $this->fail('La entrega requiere dirección.');
             }
@@ -263,6 +271,14 @@ class Commerce
         if ($quote['coupon_id']) {
             DB::table('coupons')->where('tenant_id', $tenant)->where('id', $quote['coupon_id'])->increment('used');
         }
+        $this->recordOrderEvent(
+            $tenant,
+            $id,
+            'order_created',
+            'reserved',
+            'Pedido recibido',
+            'La tienda recibió tu pedido y reservó los productos durante 30 minutos.'
+        );
         if ($pos) {
             $cash = $this->cashSession($tenant, $data['cash_session_id']);
             if ((int) $cash->warehouse_id !== (int) $data['warehouse_id']) {
@@ -314,6 +330,14 @@ class Commerce
         DB::table('orders')->where('tenant_id', $tenant)->where('id', $id)->update(['status' => 'confirmed']);
         DB::table('sales')->insert(['tenant_id' => $tenant, 'order_id' => $id]);
         DB::table('fiscal_documents')->insert(['tenant_id' => $tenant, 'order_id' => $id, 'status' => 'unconfigured']);
+        $this->recordOrderEvent(
+            $tenant,
+            $id,
+            'order_confirmed',
+            'confirmed',
+            'Pedido confirmado',
+            'El pago fue validado y la tienda confirmó la venta.'
+        );
 
         return ['id' => $id];
     }
@@ -402,6 +426,16 @@ class Commerce
         if ($cashId) {
             DB::table('cash_entries')->insert(['tenant_id' => $tenant, 'cash_session_id' => $cashId, 'amount_minor' => $data['amount_minor'], 'reason' => 'Cobro '.$order->id]);
         }
+        $this->recordOrderEvent(
+            $tenant,
+            $order->id,
+            $verified ? 'payment_verified' : 'payment_submitted',
+            $verified ? 'verified' : 'pending',
+            $verified ? 'Pago registrado' : 'Constancia recibida',
+            $verified
+                ? 'La tienda registró un pago verificado para este pedido.'
+                : 'La constancia de pago fue enviada y está pendiente de revisión.'
+        );
 
         return ['id' => $id];
     }
@@ -424,6 +458,16 @@ class Commerce
             $this->fail('El pago excede el saldo.');
         }
         DB::table('payments')->where('tenant_id', $tenant)->where('id', $paymentId)->update(['status' => $accept ? 'verified' : 'rejected', 'verified_at' => $accept ? now() : null]);
+        $this->recordOrderEvent(
+            $tenant,
+            $order->id,
+            $accept ? 'payment_verified' : 'payment_rejected',
+            $accept ? 'verified' : 'rejected',
+            $accept ? 'Pago verificado' : 'Pago rechazado',
+            $accept
+                ? 'La tienda verificó la constancia de pago.'
+                : 'La tienda rechazó la constancia. Revisa los datos y vuelve a intentarlo.'
+        );
 
         return ['id' => $paymentId];
     }
@@ -450,8 +494,59 @@ class Commerce
             DB::table('coupons')->where('tenant_id', $tenant)->where('id', $order->coupon_id)->decrement('used');
         }
         DB::table('orders')->where('tenant_id', $tenant)->where('id', $id)->update(['status' => $expire ? 'expired' : 'cancelled']);
+        $this->recordOrderEvent(
+            $tenant,
+            $id,
+            $expire ? 'order_expired' : 'order_cancelled',
+            $expire ? 'expired' : 'cancelled',
+            $expire ? 'Reserva vencida' : 'Pedido cancelado',
+            $expire
+                ? 'La reserva venció y los productos volvieron al inventario.'
+                : 'La tienda canceló el pedido. Motivo: '.$reason
+        );
 
         return ['id' => $id];
+    }
+
+    public function recordOrderEvent(
+        int $tenant,
+        string $orderId,
+        string $kind,
+        ?string $status,
+        string $title,
+        string $message,
+    ): void {
+        DB::table('order_events')->insert([
+            'tenant_id' => $tenant,
+            'order_id' => $orderId,
+            'actor_id' => auth()->id(),
+            'kind' => $kind,
+            'status' => $status,
+            'title' => $title,
+            'message' => $message,
+        ]);
+
+        $userId = DB::table('orders')
+            ->join('customers', function ($join): void {
+                $join->on('customers.id', '=', 'orders.customer_id')
+                    ->on('customers.tenant_id', '=', 'orders.tenant_id');
+            })
+            ->where('orders.tenant_id', $tenant)
+            ->where('orders.id', $orderId)
+            ->value('customers.user_id');
+
+        if ($userId === null) {
+            return;
+        }
+
+        DB::table('customer_notifications')->insert([
+            'tenant_id' => $tenant,
+            'user_id' => $userId,
+            'order_id' => $orderId,
+            'kind' => $kind,
+            'title' => $title,
+            'message' => $message,
+        ]);
     }
 
     /**

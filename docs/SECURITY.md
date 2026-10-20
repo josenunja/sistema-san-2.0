@@ -8,7 +8,7 @@ El entorno entregado es local. No se certifica ASVS nivel 2 ni aptitud productiv
 | Autorización | Membresía por empresa, roles owner/cashier/warehouse; plataforma sin acceso comercial automático | Permisos por sucursal específicos aún no implementados |
 | Aislamiento SQL | FORCE RLS, sas_runtime sin superusuario/BYPASSRLS, contexto SET LOCAL por transacción | RLS no evita una inyección que pueda cambiar app.tenant_id; bootstrap global aún requiere reducir privilegios productivos |
 | Dinero / stock | Céntimos enteros, transacciones, bloqueo por empresa, idempotencia con hash, libros inmutables | Serialización por empresa prioriza consistencia; capacidad no medida |
-| Navegador | CSP con nonce, frame-ancestors, nosniff, no-referrer, validación de Host | style unsafe-inline por temas; TLS/cookies seguras/HSTS requieren despliegue verificado |
+| Navegador | CSP con nonce, frame-ancestors, nosniff, no-referrer, validación de Host base o dominio único de tienda activa | style unsafe-inline por temas; DNS, certificados TLS, cookies seguras/HSTS y prueba de propiedad del dominio requieren despliegue verificado |
 | Archivos | Fotos decodificadas/reconvertidas WEBP; tamaño/dimensiones limitados; constancias privadas con autorización y descarga | No hay antivirus/quarantena automática instalada; no asumir inocuidad de PDF |
 | CSV | Preview y confirmación, cuota, acceso privado, escape contra fórmulas | Exportación acotada a 10.000 filas; no es exportación ilimitada |
 | Secretos | .env/.env.native/.runtime ignorados; resultados sensibles cifrados; tokens de invitación/seguimiento guardados como hash | Owner y runtime usan contraseña común SOLO en este entorno local; separar en producción |

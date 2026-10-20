@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Notifications\BusinessInvitation;
 use App\Services\Commerce;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -30,11 +33,34 @@ class PlatformController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $this->owner($request);
-        $data = $request->validate(['name' => 'required|string|max:160', 'slug' => 'required|regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/|max:80|unique:tenants,slug', 'plan' => ['required', Rule::exists('plans', 'slug')]]);
-        $id = DB::table('tenants')->insertGetId($data);
+        $data = $request->validate([
+            'name' => 'required|string|max:160',
+            'slug' => 'required|regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/|max:80|unique:tenants,slug',
+            'plan' => ['required', Rule::exists('plans', 'slug')],
+            'owner_email' => 'required|email|max:254',
+        ]);
+        $token = Str::random(64);
+        $email = strtolower($data['owner_email']);
+        unset($data['owner_email']);
+        $id = DB::transaction(function () use ($data, $email, $token) {
+            $id = DB::table('tenants')->insertGetId($data);
+            DB::table('invitations')->insert([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $id,
+                'email' => $email,
+                'role' => 'owner',
+                'token_hash' => hash('sha256', $token),
+                'expires_at' => now()->addHours(48),
+            ]);
+            DB::select("select set_config('app.tenant_id', ?, true)", [(string) $id]);
+            app(Commerce::class)->audit($id, 'tenant_created_with_owner_invitation');
+            Notification::route('mail', $email)->notify(new BusinessInvitation($data['name'], url('/invitacion').'#'.$token));
+
+            return $id;
+        });
 
         // Platform ownership does not grant membership or commercial access.
-        return back()->with('success', 'Empresa creada. Asigna a su propietario mediante invitación.')->with('operation_result', ['id' => $id]);
+        return back()->with('success', 'Empresa creada e invitación enviada. El propietario elegirá su propia contraseña y configurará la tienda.')->with('operation_result', ['id' => $id]);
     }
 
     public function update(Request $request, int $id): RedirectResponse

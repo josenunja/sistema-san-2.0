@@ -190,7 +190,7 @@ class BusinessController extends Controller
     /** @return array<string, mixed> */
     public static function orderRules(): array
     {
-        return ['warehouse_id' => 'required|integer', 'customer_id' => 'nullable|integer', 'customer_name' => 'required|string|max:160', 'phone' => 'required|string|max:30', 'email' => 'nullable|email|max:254', 'address' => 'nullable|string|max:1000', 'delivery_method' => ['required', Rule::in(['pickup', 'delivery'])], 'coupon' => 'nullable|string|max:40', 'cash_session_id' => 'nullable|integer', 'cash_minor' => 'nullable|integer|min:0|max:999999999', 'items' => 'required|array|min:1|max:100', 'items.*.product_id' => 'required|integer', 'items.*.quantity' => 'required|integer|min:1|max:10000'];
+        return ['warehouse_id' => 'required|integer', 'customer_id' => 'nullable|integer', 'customer_name' => 'required|string|max:160', 'phone' => 'required|string|max:30', 'email' => 'nullable|email|max:254', 'address' => 'nullable|string|max:1000', 'delivery_method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])], 'coupon' => 'nullable|string|max:40', 'cash_session_id' => 'nullable|integer', 'cash_minor' => 'nullable|integer|min:0|max:999999999', 'items' => 'required|array|min:1|max:100', 'items.*.product_id' => 'required|integer', 'items.*.quantity' => 'required|integer|min:1|max:10000'];
     }
 
     /**
@@ -341,7 +341,15 @@ class BusinessController extends Controller
         if (($transitions[$order->delivery_status] ?? null) !== $data['status']) {
             $commerce->fail('La transición de entrega no es válida.');
         }
-        DB::table('orders')->where('tenant_id', $tenant)->where('id', $order->id)->update(['delivery_status' => $data['status']]);
+        $status = $data['status'] ?? null;
+        $copy = match ($status) {
+            'preparing' => ['Pedido en preparación', 'La tienda está preparando los productos de tu pedido.'],
+            'ready' => ['Pedido listo', $order->delivery_method === 'pickup' ? 'Tu pedido ya está listo para recoger.' : 'Tu pedido está listo para iniciar la entrega.'],
+            'delivered' => ['Pedido entregado', 'La tienda marcó el pedido como entregado.'],
+            default => $commerce->fail('El estado de entrega no es válido.'),
+        };
+        DB::table('orders')->where('tenant_id', $tenant)->where('id', $order->id)->update(['delivery_status' => $status]);
+        $commerce->recordOrderEvent($tenant, $order->id, 'delivery_'.$status, $status, $copy[0], $copy[1]);
 
         return ['id' => $order->id];
     }
@@ -354,7 +362,8 @@ class BusinessController extends Controller
     {
         $publish = $data['publication'] === 'publish';
         unset($data['publication']);
-        $json = json_encode($data, JSON_THROW_ON_ERROR);
+        $current = json_decode((string) DB::table('tenants')->where('id', $tenant)->value('settings'), true) ?: [];
+        $json = json_encode([...$current, ...$data], JSON_THROW_ON_ERROR);
         $version = DB::table('storefront_versions')->insertGetId(['tenant_id' => $tenant, 'actor_id' => auth()->id(), 'settings' => $json, 'published_at' => $publish ? now() : null]);
         if ($publish) {
             DB::table('tenants')->where('id', $tenant)->update(['settings' => $json]);
@@ -379,6 +388,6 @@ class BusinessController extends Controller
         $order = $commerce->order($tenant->id, $orderId);
         unset($order->tracking_hash);
 
-        return Inertia::render('Order', ['tenant' => ['name' => $tenant->name, 'slug' => $slug], 'order' => $order, 'lines' => DB::table('order_lines')->where('tenant_id', $tenant->id)->where('order_id', $orderId)->get(), 'payments' => DB::table('payments')->where('tenant_id', $tenant->id)->where('order_id', $orderId)->get(['id', 'amount_minor', 'method', 'status', 'reference', 'created_at']), 'paid' => $commerce->paid($tenant->id, $orderId), 'refunds' => DB::table('refunds')->where('tenant_id', $tenant->id)->where('order_id', $orderId)->get(), 'managing' => true, 'role' => $request->attributes->get('membership')->role, 'cashSessions' => DB::table('cash_sessions')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereNull('closed_at')->get(), 'whatsapp' => null]);
+        return Inertia::render('Order', ['tenant' => ['name' => $tenant->name, 'slug' => $slug], 'order' => $order, 'lines' => DB::table('order_lines')->where('tenant_id', $tenant->id)->where('order_id', $orderId)->get(), 'payments' => DB::table('payments')->where('tenant_id', $tenant->id)->where('order_id', $orderId)->get(['id', 'amount_minor', 'method', 'status', 'reference', 'created_at']), 'events' => DB::table('order_events')->where('tenant_id', $tenant->id)->where('order_id', $orderId)->orderBy('created_at')->orderBy('id')->get(['id', 'kind', 'status', 'title', 'message', 'created_at']), 'paid' => $commerce->paid($tenant->id, $orderId), 'refunds' => DB::table('refunds')->where('tenant_id', $tenant->id)->where('order_id', $orderId)->get(), 'managing' => true, 'role' => $request->attributes->get('membership')->role, 'cashSessions' => DB::table('cash_sessions')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereNull('closed_at')->get(), 'whatsapp' => null]);
     }
 }

@@ -26,8 +26,8 @@ class CatalogToolsController extends Controller
         $tenant = $this->owner($request);
         DB::select('SELECT pg_advisory_xact_lock(?)', [$tenant]);
         abort_unless(DB::table('products')->where('tenant_id', $tenant)->where('id', $productId)->exists(), 404);
-        $data = $request->validate(['sku' => ['required', 'regex:/^[A-Za-z0-9._-]{1,64}$/', Rule::unique('products', 'sku')->where('tenant_id', $tenant)->ignore($productId)], 'name' => 'required|string|max:160', 'price_minor' => 'required|integer|min:0|max:999999999', 'published' => 'required|boolean', 'category' => 'nullable|string|max:100', 'variant_group' => 'nullable|string|max:100', 'description' => 'nullable|string|max:3000']);
-        foreach (['category', 'variant_group', 'description'] as $field) {
+        $data = $request->validate(['sku' => ['required', 'regex:/^[A-Za-z0-9._-]{1,64}$/', Rule::unique('products', 'sku')->where('tenant_id', $tenant)->ignore($productId)], 'name' => 'required|string|max:160', 'price_minor' => 'required|integer|min:0|max:999999999', 'compare_at_minor' => 'nullable|integer|min:1|max:999999999|gt:price_minor', 'published' => 'required|boolean', 'category' => 'nullable|string|max:100', 'audience' => ['sometimes', Rule::in(['women', 'men', 'kids', 'unisex'])], 'trending' => 'sometimes|boolean', 'variant_group' => 'nullable|string|max:100', 'size' => 'nullable|string|max:40', 'color' => 'nullable|string|max:60', 'description' => 'nullable|string|max:3000']);
+        foreach (['category', 'variant_group', 'size', 'color', 'description'] as $field) {
             $data[$field] ??= '';
         }
         DB::table('products')->where('tenant_id', $tenant)->where('id', $productId)->update($data);
@@ -51,8 +51,11 @@ class CatalogToolsController extends Controller
             if ($header) {
                 $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
             }
-            if ($header !== ['sku', 'nombre', 'precio', 'categoria', 'grupo', 'publicado']) {
-                $commerce->fail('Encabezado requerido: sku,nombre,precio,categoria,grupo,publicado. El precio va en soles con punto decimal.');
+            $legacyHeader = ['sku', 'nombre', 'precio', 'categoria', 'grupo', 'publicado'];
+            $variantHeader = ['sku', 'nombre', 'precio', 'categoria', 'grupo', 'talla', 'color', 'publicado'];
+            $hasVariantColumns = $header === $variantHeader;
+            if ($header !== $legacyHeader && ! $hasVariantColumns) {
+                $commerce->fail('Encabezado requerido: sku,nombre,precio,categoria,grupo,talla,color,publicado. También se acepta el formato anterior de seis columnas.');
             }
             $rows = [];
             $seen = [];
@@ -60,16 +63,23 @@ class CatalogToolsController extends Controller
                 if ($row === [null]) {
                     continue;
                 }
-                if (count($rows) >= 2000 || count($row) !== 6) {
-                    $commerce->fail('Máximo 2000 filas; cada fila debe tener seis columnas.');
+                $expectedColumns = $hasVariantColumns ? 8 : 6;
+                if (count($rows) >= 2000 || count($row) !== $expectedColumns) {
+                    $commerce->fail('Máximo 2000 filas; cada fila debe respetar el número de columnas del encabezado.');
                 }
-                [$sku,$name,$price,$category,$group,$published] = $row;
+                if ($hasVariantColumns) {
+                    [$sku,$name,$price,$category,$group,$size,$color,$published] = $row;
+                } else {
+                    [$sku,$name,$price,$category,$group,$published] = $row;
+                    $size = '';
+                    $color = '';
+                }
                 if (! preg_match('/^([0-9]{1,7})(?:\.([0-9]{1,2}))?$/', $price, $parts)) {
                     $commerce->fail('Precio inválido en la fila '.(count($rows) + 2));
                 }
                 $minor = (int) $parts[1] * 100 + (int) str_pad($parts[2] ?? '', 2, '0');
-                $data = ['sku' => $sku, 'name' => $name, 'price_minor' => $minor, 'category' => $category, 'variant_group' => $group, 'published' => $published];
-                $validator = Validator::make($data, ['sku' => 'required|regex:/^[A-Za-z0-9._-]{1,64}$/', 'name' => 'required|string|max:160', 'price_minor' => 'required|integer|min:0|max:999999999', 'category' => 'nullable|string|max:100', 'variant_group' => 'nullable|string|max:100', 'published' => 'required|boolean']);
+                $data = ['sku' => $sku, 'name' => $name, 'price_minor' => $minor, 'category' => $category, 'variant_group' => $group, 'size' => $size, 'color' => $color, 'published' => $published];
+                $validator = Validator::make($data, ['sku' => 'required|regex:/^[A-Za-z0-9._-]{1,64}$/', 'name' => 'required|string|max:160', 'price_minor' => 'required|integer|min:0|max:999999999', 'category' => 'nullable|string|max:100', 'variant_group' => 'nullable|string|max:100', 'size' => 'nullable|string|max:40', 'color' => 'nullable|string|max:60', 'published' => 'required|boolean']);
                 if ($validator->fails() || isset($seen[$sku])) {
                     $commerce->fail('Fila inválida o SKU repetido en la fila '.(count($rows) + 2));
                 }

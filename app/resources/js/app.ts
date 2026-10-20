@@ -23,6 +23,8 @@ void createInertiaApp({
                 'Invitation',
                 'Product',
                 'CustomerAccount',
+                'CustomerHub',
+                'StoreOnboarding',
             ].includes(name):
                 return null;
             case name.startsWith('auth/'):

@@ -17,8 +17,9 @@ import PasskeyVerify from '@/components/PasskeyVerify.vue';
 
 defineOptions({
     layout: {
-        title: 'Accede a tu negocio',
-        description: 'Ingresa tu correo y contraseña para continuar',
+        title: 'Entra a tu cuenta',
+        description:
+            'Consulta tus pedidos, continúa tu compra o gestiona tu tienda.',
     },
 });
 
@@ -102,7 +103,7 @@ defineProps<{
                 data-test="login-button"
             >
                 <Spinner v-if="processing" />
-                Ingresar
+                Entrar a mi cuenta
             </Button>
         </div>
     </Form>

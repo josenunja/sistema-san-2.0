@@ -1,5 +1,13 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
+import {
+    ArrowLeft,
+    Check,
+    Layers3,
+    ShieldCheck,
+    ShoppingBag,
+    Sparkles,
+} from '@lucide/vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import { home } from '@/routes';
 
@@ -10,34 +18,64 @@ defineProps<{
 </script>
 
 <template>
-    <div
-        class="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-6 md:p-10"
-    >
-        <div class="w-full max-w-sm">
-            <div class="flex flex-col gap-8">
-                <div class="flex flex-col items-center gap-4">
-                    <Link
-                        :href="home()"
-                        class="flex flex-col items-center gap-2 font-medium"
+    <div class="premium-auth-page">
+        <div class="premium-auth-grid" aria-hidden="true"></div>
+        <div class="premium-auth-particles" aria-hidden="true">
+            <span
+                v-for="particle in 18"
+                :key="particle"
+                :class="`premium-particle premium-particle-${particle}`"
+            ></span>
+        </div>
+
+        <Link :href="home()" class="premium-auth-home">
+            <span><ArrowLeft :size="16" /></span> Volver al catálogo
+        </Link>
+
+        <main class="premium-auth-shell">
+            <section class="premium-auth-story">
+                <Link :href="home()" class="premium-auth-brand">
+                    <span><Layers3 :size="25" /></span>
+                    <strong>SAS<em>SAN</em></strong>
+                </Link>
+                <div class="premium-auth-story-copy">
+                    <span class="premium-auth-eyebrow"
+                        ><Sparkles :size="14" /> TU ESPACIO, A TU MANERA</span
                     >
-                        <div
-                            class="mb-1 flex h-9 w-9 items-center justify-center rounded-md"
-                        >
-                            <AppLogoIcon
-                                class="size-9 fill-current text-[var(--foreground)] dark:text-white"
-                            />
-                        </div>
+                    <h2>Compra.<br />Sigue.<br /><em>Gestiona.</em></h2>
+                    <p>
+                        Una sola cuenta para descubrir productos, revisar tus
+                        pedidos y hacer crecer tu negocio.
+                    </p>
+                </div>
+                <div class="premium-auth-benefits">
+                    <span><Check :size="14" /> Catálogo abierto</span>
+                    <span><Check :size="14" /> Pedidos protegidos</span>
+                    <span><Check :size="14" /> Tiendas independientes</span>
+                </div>
+            </section>
+
+            <section class="premium-auth-card">
+                <div class="premium-auth-card-head">
+                    <Link :href="home()" class="premium-auth-mark">
+                        <AppLogoIcon class="size-8" />
                         <span class="sr-only">{{ title }}</span>
                     </Link>
-                    <div class="space-y-2 text-center">
-                        <h1 class="text-xl font-medium">{{ title }}</h1>
-                        <p class="text-center text-sm text-muted-foreground">
-                            {{ description }}
-                        </p>
-                    </div>
+                    <span class="premium-auth-secure"
+                        ><ShieldCheck :size="14" /> Acceso seguro</span
+                    >
                 </div>
-                <slot />
-            </div>
-        </div>
+                <div class="premium-auth-title">
+                    <span><ShoppingBag :size="15" /> BIENVENIDO DE NUEVO</span>
+                    <h1>{{ title }}</h1>
+                    <p>{{ description }}</p>
+                </div>
+                <div class="premium-auth-form"><slot /></div>
+                <p class="premium-auth-footnote">
+                    Tus datos se mantienen separados y protegidos en cada
+                    tienda.
+                </p>
+            </section>
+        </main>
     </div>
 </template>
