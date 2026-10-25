@@ -24,7 +24,8 @@ class CustomerHubController extends Controller
     {
         $user = $request->user();
         abort_unless($user !== null, 401);
-        $tenantIds = DB::table('tenants')->where('active', true)->pluck('id');
+        $instance = $request->attributes->get('instance_tenant');
+        $tenantIds = DB::table('tenants')->where('active', true)->when(config('business.single'), fn ($query) => $query->where('id', $instance?->id))->pluck('id');
 
         foreach ($tenantIds as $tenantId) {
             DB::transaction(function () use ($tenantId, $user): void {
@@ -49,6 +50,7 @@ class CustomerHubController extends Controller
         $notifications = [];
         $tenants = DB::table('tenants')
             ->where('active', true)
+            ->when(config('business.single'), fn ($query) => $query->where('id', $request->attributes->get('instance_tenant')?->id))
             ->orderBy('name')
             ->get(['id', 'name', 'slug']);
 

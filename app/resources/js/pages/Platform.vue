@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import InvitationList, {
+    type Invitation,
+} from '@/components/InvitationList.vue';
 import {
     ArrowRight,
     Check,
@@ -14,9 +17,17 @@ type Tenant = {
     slug: string;
     active: boolean;
     plan: string;
+    my_role: string | null;
+    invitations: Invitation[];
 };
 defineProps<{
-    tenants: { data: Tenant[] };
+    tenants: {
+        data: Tenant[];
+        prev_page_url: string | null;
+        next_page_url: string | null;
+        current_page: number;
+        last_page: number;
+    };
     plans: {
         slug: string;
         name: string;
@@ -31,6 +42,7 @@ const form = useForm({
     slug: '',
     plan: 'inicial',
     owner_email: '',
+    manage_catalog: true,
 });
 const invite = useForm({ tenant_id: '', email: '', role: 'owner' });
 function update(t: Tenant) {
@@ -38,6 +50,11 @@ function update(t: Tenant) {
 }
 function plan(t: Tenant) {
     router.patch(`/plataforma/${t.id}`, { active: t.active, plan: t.plan });
+}
+const access = useForm({ enabled: false });
+function catalogAccess(t: Tenant, enabled: boolean) {
+    access.enabled = enabled;
+    access.post(`/plataforma/${t.id}/catalogo`, { preserveScroll: true });
 }
 </script>
 <template>
@@ -53,8 +70,22 @@ function plan(t: Tenant) {
             </header>
             <h1 class="mt-10 text-4xl font-semibold">Empresas y planes</h1>
             <p class="mt-4 text-slate-500">
-                El acceso a esta pantalla no concede acceso a los datos
-                comerciales de cada empresa.
+                Crea las tiendas de tus clientes y habilita tu ayuda de catálogo
+                en cada una. El propietario puede subir sus productos por su
+                cuenta.
+            </p>
+            <p
+                v-if="
+                    page.props.environment === 'native' ||
+                    page.props.environment === 'local' ||
+                    page.props.environment === 'testing'
+                "
+                class="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900"
+            >
+                En este entorno de pruebas, las invitaciones se guardan en el
+                registro privado de correo. No se envían correos reales. Para
+                entregar accesos automáticamente falta configurar el servicio de
+                correo.
             </p>
             <p
                 v-if="page.props.success"
@@ -127,6 +158,23 @@ function plan(t: Tenant) {
                         administrador no crea ni conoce la contraseña. El
                         propietario la elige al aceptar su enlace privado.
                     </p>
+                    <label
+                        class="flex items-start gap-3 rounded-xl border p-3 text-sm"
+                    >
+                        <input
+                            v-model="form.manage_catalog"
+                            type="checkbox"
+                            class="mt-1"
+                        />
+                        <span
+                            >También cargaré productos para este cliente<small
+                                class="mt-1 block text-slate-500"
+                                >Activa mi permiso de catálogo en esta tienda.
+                                El cliente conserva su acceso de
+                                propietario.</small
+                            ></span
+                        >
+                    </label>
                     <p
                         v-for="(e, k) in form.errors"
                         :key="k"
@@ -239,6 +287,66 @@ function plan(t: Tenant) {
                     </p>
                 </form>
             </details>
+            <p
+                v-for="(error, key) in access.errors"
+                :key="key"
+                role="alert"
+                class="mt-4 text-sm text-red-700"
+            >
+                {{ error }}
+            </p>
+            <section
+                class="mt-8 space-y-4"
+                aria-label="Accesos e invitaciones por tienda"
+            >
+                <article
+                    v-for="t in tenants.data"
+                    :key="t.id"
+                    class="rounded-2xl border bg-white p-5"
+                >
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-4"
+                    >
+                        <div>
+                            <h2 class="font-semibold">{{ t.name }}</h2>
+                            <p class="text-xs text-slate-500">{{ t.slug }}</p>
+                        </div>
+                        <div class="flex flex-wrap gap-3 text-sm">
+                            <Link
+                                v-if="
+                                    t.active &&
+                                    ['owner', 'catalog'].includes(
+                                        t.my_role || '',
+                                    )
+                                "
+                                :href="`/gestion/${t.slug}`"
+                                class="rounded-xl bg-emerald-800 px-4 py-2 text-white"
+                                >Cargar productos</Link
+                            >
+                            <button
+                                v-if="!t.my_role && t.active"
+                                :disabled="access.processing"
+                                class="rounded-xl border px-4 py-2"
+                                @click="catalogAccess(t, true)"
+                            >
+                                Habilitar mi permiso de catálogo
+                            </button>
+                            <button
+                                v-if="t.my_role === 'catalog'"
+                                :disabled="access.processing"
+                                class="rounded-xl border px-4 py-2 text-red-700"
+                                @click="catalogAccess(t, false)"
+                            >
+                                Retirar mi permiso de catálogo
+                            </button>
+                        </div>
+                    </div>
+                    <InvitationList
+                        :invitations="t.invitations"
+                        :tenant-id="t.id"
+                    />
+                </article>
+            </section>
             <div class="mt-8 overflow-auto rounded-2xl border bg-white">
                 <table class="w-full text-left text-sm">
                     <thead class="bg-slate-50">
@@ -292,6 +400,30 @@ function plan(t: Tenant) {
                     </tbody>
                 </table>
             </div>
+            <nav
+                v-if="tenants.last_page > 1"
+                aria-label="Páginas de empresas"
+                class="mt-4 flex items-center justify-between gap-4 text-sm"
+            >
+                <Link
+                    v-if="tenants.prev_page_url"
+                    :href="tenants.prev_page_url"
+                    class="rounded-lg border bg-white px-4 py-2"
+                    >Anterior</Link
+                >
+                <span v-else class="text-slate-400">Anterior</span>
+                <span
+                    >Página {{ tenants.current_page }} de
+                    {{ tenants.last_page }}</span
+                >
+                <Link
+                    v-if="tenants.next_page_url"
+                    :href="tenants.next_page_url"
+                    class="rounded-lg border bg-white px-4 py-2"
+                    >Siguiente</Link
+                >
+                <span v-else class="text-slate-400">Siguiente</span>
+            </nav>
             <div class="mt-8 grid gap-4 md:grid-cols-3">
                 <article
                     v-for="p in plans"

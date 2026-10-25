@@ -103,8 +103,8 @@ function readNotifications() {
                     <p>
                         {{
                             tab === 'orders'
-                                ? 'Consulta el estado de tus compras en todas las tiendas.'
-                                : 'Tu información y las tiendas donde ya tienes una cuenta.'
+                                ? 'Consulta el estado de tus compras.'
+                                : 'Tu información y tus datos de contacto.'
                         }}
                     </p>
                 </div>

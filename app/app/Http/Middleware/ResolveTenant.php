@@ -19,7 +19,7 @@ class ResolveTenant
             abort_unless($membership !== null, 403);
             $request->attributes->set('membership', $membership);
             if ($request->routeIs('manage.catalog', 'manage.products.*')) {
-                abort_unless($membership->role === 'owner', 403);
+                abort_unless(in_array($membership->role, ['owner', 'catalog'], true), 403);
             }
             if (! $request->user()->two_factor_secret || ! $request->user()->two_factor_confirmed_at) {
                 return redirect('/settings/security');

@@ -2,8 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use Closure;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use Symfony\Component\HttpFoundation\Response;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -15,6 +17,22 @@ class HandleInertiaRequests extends Middleware
      * @var string
      */
     protected $rootView = 'app';
+
+    public function handle(Request $request, Closure $next): Response
+    {
+        $response = parent::handle($request, $next);
+
+        // Laravel excludes AJAX visits from the previous URL. Remember actual
+        // Inertia navigation so back() works with our no-referrer policy.
+        if ($request->isMethod('GET') && $request->header('X-Inertia')
+            && ! str_contains(strtolower((string) $request->header('Purpose')), 'prefetch')
+            && ! str_contains(strtolower((string) $request->header('Sec-Purpose')), 'prefetch')
+            && $response->isSuccessful() && $response->headers->has('X-Inertia')) {
+            $request->session()->setPreviousUrl($request->fullUrl());
+        }
+
+        return $response;
+    }
 
     /**
      * Determines the current asset version.
@@ -39,6 +57,7 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'environment' => app()->environment(),
+            'singleBusiness' => (bool) config('business.single'),
             'success' => $request->session()->get('success'),
             'operationResult' => $request->session()->get('operation_result'),
             'auth' => [

@@ -43,7 +43,7 @@ class PlatformTest extends TestCase
         $user = User::factory()->create();
         $user->forceFill(['platform_owner' => true, 'two_factor_secret' => encrypt('TEST'), 'two_factor_confirmed_at' => now()])->save();
         $tenant = DB::table('tenants')->insertGetId(['name' => 'Private', 'slug' => 'private-test']);
-        $this->actingAs($user)->get('/plataforma')->assertOk();
+        $this->actingAs($user)->withSession(['auth.password_confirmed_at' => time()])->get('/plataforma')->assertOk();
         $this->get('/gestion/private-test/operacion/resumen')->assertForbidden();
         $other = User::factory()->create();
         DB::table('memberships')->insert(['tenant_id' => $tenant, 'user_id' => $other->id, 'role' => 'owner']);

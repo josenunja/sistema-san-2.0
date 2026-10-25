@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Commerce;
+use App\Services\ProductImages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -16,7 +17,7 @@ class CatalogToolsController extends Controller
 {
     private function owner(Request $request): int
     {
-        abort_unless($request->attributes->get('membership')->role === 'owner', 403);
+        abort_unless(in_array($request->attributes->get('membership')->role, ['owner', 'catalog'], true), 403);
 
         return $request->attributes->get('tenant')->id;
     }
@@ -30,8 +31,18 @@ class CatalogToolsController extends Controller
         foreach (['category', 'variant_group', 'size', 'color', 'description'] as $field) {
             $data[$field] ??= '';
         }
-        DB::table('products')->where('tenant_id', $tenant)->where('id', $productId)->update($data);
-        $commerce->audit($tenant, 'product_updated', (string) $productId);
+        $request->validate(['image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:3072']]);
+        DB::transaction(function () use ($request, $tenant, $productId, $data, $commerce) {
+            DB::table('products')->where('tenant_id', $tenant)->where('id', $productId)->update($data);
+            $file = $request->file('image');
+            if ($file instanceof UploadedFile) {
+                if (DB::table('product_images')->where('tenant_id', $tenant)->where('product_id', $productId)->count() >= 8) {
+                    $commerce->fail('Máximo ocho imágenes por producto.');
+                }
+                app(ProductImages::class)->store($tenant, $productId, $file);
+            }
+            $commerce->audit($tenant, 'product_updated', (string) $productId);
+        });
 
         return back()->with('success', 'Producto actualizado. Las ventas anteriores conservan sus precios.');
     }
@@ -138,39 +149,7 @@ class CatalogToolsController extends Controller
         $request->validate(['image' => 'required|file|mimes:jpg,jpeg,png,webp|max:3072']);
         $file = $request->file('image');
         abort_unless($file instanceof UploadedFile, 422);
-        $size = getimagesize($file->getRealPath());
-        if (! $size || $size[0] * $size[1] > 10000000 || max($size[0], $size[1]) > 4000) {
-            $commerce->fail('Imagen demasiado grande: máximo 4000 px y 10 megapíxeles.');
-        }
-        if (! extension_loaded('gd')) {
-            $commerce->fail('El entorno no tiene disponible el procesador de imágenes GD.');
-        }
-        $bytes = file_get_contents($file->getRealPath());
-        if ($bytes === false) {
-            $commerce->fail('No se pudo leer la imagen. Intenta cargarla nuevamente.');
-        }
-        $image = imagecreatefromstring($bytes);
-        if (! $image) {
-            $commerce->fail('El contenido no es una imagen válida.');
-        }
-        $ratio = min(1, 1200 / max($size[0], $size[1]));
-        $scaled = imagescale($image, max(1, (int) ($size[0] * $ratio)), max(1, (int) ($size[1] * $ratio)));
-        if (! $scaled) {
-            $commerce->fail('No se pudo procesar la imagen.');
-        }
-        ob_start();
-        imagewebp($scaled, null, 82);
-        $content = ob_get_clean();
-        imagedestroy($image);
-        imagedestroy($scaled);
-        if (! $content) {
-            $commerce->fail('No se pudo guardar la imagen procesada.');
-        }
-        $path = $tenant.'/catalog/'.Str::uuid().'.webp';
-        Storage::disk('local')->put($path, $content);
-        DB::table('product_images')->insert(['tenant_id' => $tenant, 'product_id' => $productId, 'path' => $path]);
-        DB::table('products')->where('tenant_id', $tenant)->where('id', $productId)->whereNull('image_path')->update(['image_path' => $path]);
-        $commerce->audit($tenant, 'product_image_uploaded', (string) $productId);
+        app(ProductImages::class)->store($tenant, $productId, $file);
 
         return back()->with('success', 'Foto procesada y guardada sin metadatos originales.');
     }

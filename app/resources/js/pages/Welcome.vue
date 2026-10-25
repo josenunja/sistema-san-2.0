@@ -599,11 +599,13 @@ onUnmounted(() => {
                                 :href="
                                     store.role === 'cashier'
                                         ? `/gestion/${store.slug}/operacion/pos`
-                                        : store.role === 'warehouse'
-                                          ? `/gestion/${store.slug}/operacion/inventario`
-                                          : !store.onboarding_complete
-                                            ? `/gestion/${store.slug}/configurar`
-                                            : `/gestion/${store.slug}/operacion/resumen`
+                                        : store.role === 'catalog'
+                                          ? `/gestion/${store.slug}`
+                                          : store.role === 'warehouse'
+                                            ? `/gestion/${store.slug}/operacion/inventario`
+                                            : !store.onboarding_complete
+                                              ? `/gestion/${store.slug}/configurar`
+                                              : `/gestion/${store.slug}/operacion/resumen`
                                 "
                                 class="manage-store"
                                 >{{

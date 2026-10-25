@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import {
     ArrowLeft,
     Check,
@@ -15,6 +15,7 @@ defineProps<{
     title?: string;
     description?: string;
 }>();
+const page = usePage();
 </script>
 
 <template>
@@ -36,7 +37,10 @@ defineProps<{
             <section class="premium-auth-story">
                 <Link :href="home()" class="premium-auth-brand">
                     <span><Layers3 :size="25" /></span>
-                    <strong>SAS<em>SAN</em></strong>
+                    <strong v-if="page.props.singleBusiness">{{
+                        page.props.name
+                    }}</strong
+                    ><strong v-else>SAS<em>SAN</em></strong>
                 </Link>
                 <div class="premium-auth-story-copy">
                     <span class="premium-auth-eyebrow"
@@ -51,7 +55,14 @@ defineProps<{
                 <div class="premium-auth-benefits">
                     <span><Check :size="14" /> Catálogo abierto</span>
                     <span><Check :size="14" /> Pedidos protegidos</span>
-                    <span><Check :size="14" /> Tiendas independientes</span>
+                    <span
+                        ><Check :size="14" />
+                        {{
+                            page.props.singleBusiness
+                                ? 'Tu negocio independiente'
+                                : 'Tiendas independientes'
+                        }}</span
+                    >
                 </div>
             </section>
 

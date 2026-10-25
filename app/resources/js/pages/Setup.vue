@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
+import { businessTypes } from '@/lib/businessTypes';
 import {
     ArrowRight,
     Check,
@@ -15,13 +16,17 @@ import {
     ShieldCheck,
 } from '@lucide/vue';
 const visible = ref(false);
+const props = defineProps<{
+    businessDefaults?: { name: string; slug: string; type: string };
+}>();
 const form = useForm({
     name: '',
     email: '',
     password: '',
     password_confirmation: '',
-    business: '',
-    slug: '',
+    business: props.businessDefaults?.name || '',
+    slug: props.businessDefaults?.slug || '',
+    business_type: props.businessDefaults?.type || 'general',
     local_confirmation: false,
 });
 const accountReady = computed(
@@ -196,9 +201,23 @@ const accountReady = computed(
                     </div>
                     <div class="setup-section-label business-label">
                         <span>02</span>
-                        <h3>Tu primera empresa</h3>
+                        <h3>Tu negocio</h3>
                     </div>
                     <div class="setup-fields">
+                        <label
+                            >Tipo de negocio<select
+                                v-model="form.business_type"
+                                class="rounded-xl border bg-white p-3"
+                            >
+                                <option
+                                    v-for="type in businessTypes"
+                                    :key="type.value"
+                                    :value="type.value"
+                                >
+                                    {{ type.label }}
+                                </option>
+                            </select></label
+                        >
                         <label
                             >Nombre del negocio<input
                                 v-model="form.business"

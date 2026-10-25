@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Commerce;
+use App\Services\Invitations;
 use App\Services\Purchasing;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -77,6 +78,7 @@ class BusinessController extends Controller
             $data['settings'] = json_decode($tenant->settings, true) ?: [];
             $data['versions'] = DB::table('storefront_versions')->where('tenant_id', $id)->orderByDesc('id')->limit(30)->get(['id', 'published_at', 'created_at']);
             $data['members'] = DB::table('memberships')->join('users', 'users.id', '=', 'memberships.user_id')->where('memberships.tenant_id', $id)->get(['users.id', 'users.name', 'users.email', 'memberships.role']);
+            $data['invitations'] = app(Invitations::class)->listing($id);
         }
         if ($section === 'resumen') {
             $data['report'] = $this->report($id, $request);

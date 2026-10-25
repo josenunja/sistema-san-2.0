@@ -2,6 +2,9 @@
 import { computed, reactive, ref } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import BusinessShell from '@/components/BusinessShell.vue';
+import InvitationList, {
+    type Invitation,
+} from '@/components/InvitationList.vue';
 import { money, minor, state, localDate } from '@/lib/commerce';
 
 type Row = Record<string, string | number | boolean | null>;
@@ -24,6 +27,9 @@ const props = defineProps<{
 }>();
 const page = usePage();
 const invitation = reactive({ email: '', role: 'cashier' });
+const invitations = computed(
+    () => (props.data.invitations || []) as Invitation[],
+);
 function inviteMember() {
     router.post(
         '/invitaciones',
@@ -1300,7 +1306,9 @@ const reportCards = [
                                     ? 'Propietario'
                                     : m.role === 'cashier'
                                       ? 'Caja'
-                                      : 'Almacén'
+                                      : m.role === 'catalog'
+                                        ? 'Catálogo'
+                                        : 'Almacén'
                             }}
                         </p>
                     </div>
@@ -1330,6 +1338,7 @@ const reportCards = [
                             <option value="cashier">Caja</option>
                             <option value="warehouse">Almacén</option>
                             <option value="owner">Propietario</option>
+                            <option value="catalog">Solo catálogo</option>
                         </select></label
                     ><button
                         class="self-end rounded-xl bg-emerald-800 p-3 text-white"
@@ -1341,6 +1350,10 @@ const reportCards = [
                     Requiere contraseña confirmada recientemente. En local el
                     correo se guarda en el registro de desarrollo.
                 </p>
+                <InvitationList
+                    :invitations="invitations"
+                    :tenant-id="tenant.id"
+                />
             </section>
         </template>
         <template v-if="section === 'auditoria'"

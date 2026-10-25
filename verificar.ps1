@@ -1,4 +1,4 @@
-param([string]$Filter = 'Tenant|Commerce|Offline|Platform|Catalog|Customer|Fiscal')
+param([string]$Filter = 'Tenant|Commerce|Offline|Platform|Catalog|Customer|Fiscal|StoreOnboarding|SingleBusiness')
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot 'app')
 foreach ($line in Get-Content -LiteralPath '.env.native') {
@@ -7,6 +7,7 @@ foreach ($line in Get-Content -LiteralPath '.env.native') {
     }
 }
 $env:APP_ENV = 'testing'
+$env:BUSINESS_MODE = 'platform'
 $env:DB_DATABASE = 'sas_san_test'
 $env:DB_USERNAME = 'sas_runtime'
 $env:PRIVATE_STORAGE_ROOT = Join-Path $PSScriptRoot '.runtime\test-objects'

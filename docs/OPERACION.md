@@ -41,3 +41,25 @@ No se configuró archivado WAL/PITR ni copia remota. El tiempo de restauración 
 - Pérdida del equipo: revocar accesos y conciliar offline; no liberar asignaciones sin conocer las ventas pendientes.
 - Fuga de secreto: revocar/rotar el secreto específico y revisar registros. No regenerar APP_KEY directamente: los datos cifrados anteriores dependen de ella.
 - Docker con errores I/O: conservar disco y evidencias; solicitar recuperación especializada. No usar restablecimiento de fábrica ni borrar volúmenes.
+
+## Recorrido del administrador para crear una tienda
+
+1. Entrar en /login. Si no existe ninguna cuenta, el primer administrador debe crearla en /instalacion y activar MFA en Seguridad. No hay usuario o contraseña universal.
+2. Desde /dashboard, abrir Administrar plataforma y confirmar la contraseña antes de rellenar el alta. Indicar nombre, identificador sin espacios, plan y correo del propietario.
+3. En este entorno, recuperar el enlace privado del registro de correo local; no se envían mensajes reales. Compartir únicamente el enlace de la invitación con su destinatario, nunca el archivo de registro completo ni contraseñas. Para entrega automática se debe configurar correo real en un despliegue autorizado.
+4. El propietario acepta el enlace vigente (48 horas), elige su contraseña o utiliza la de su cuenta existente y configura MFA. Una cuenta de comprador y una membresía del personal son accesos diferentes.
+5. El propietario abre Configurar tienda, publica su identidad y entra a Catálogo para crear productos: SKU único, nombre, precio, publicación, categoría, sección, talla/color y fotos. En Inventario crea el almacén y registra mercadería con costo, proveedor y referencia; publicar el producto por sí solo no crea stock.
+6. Para delegar operación, entra a Mi tienda y envía invitaciones como owner, cashier o warehouse. El cajero trabaja caja/POS/clientes; almacén trabaja existencias; el propietario administra catálogo y configuración. La revocación conserva el historial y no permite retirar al último propietario.
+7. El administrador global puede cambiar plan o suspender/reactivar empresas. Para subir productos a una tienda ajena necesita además una invitación con rol owner de esa empresa; no existe acceso comercial maestro. La cuenta inicial sí posee su primera empresa.
+
+La demostración en localhost:8002 usa datos sintéticos. El trabajo real permanece en localhost:8000; no utilizar las cuentas de demostración como credenciales reales.
+
+## Reenviar invitaciones y ayudar al cliente con sus productos
+
+En Plataforma, cada tarjeta de tienda muestra sus invitaciones recientes y permite reenviar o revocar las pendientes/vencidas. Reenviar crea un enlace nuevo, invalida el anterior y renueva 48 horas; esperar un minuto entre envíos. Revocar requiere confirmación y no retira una membresía ya aceptada. Los propietarios disponen de las mismas acciones para su tienda en Mi tienda / Mi equipo. El correo sigue siendo local por registro, sin envíos reales.
+
+Para cargar productos de un cliente, el superadministrador marca También cargaré productos para este cliente al crear la empresa, o pulsa Habilitar mi permiso de catálogo en una tienda existente. Después abre Cargar productos. El permiso Solo catálogo permite productos, fotos y CSV, consume un cupo del plan y no abre ventas, clientes ni caja. El propietario conserva su acceso completo y puede retirar esta ayuda desde Mi equipo. Retirar mi permiso de catálogo afecta únicamente la membresía de ayuda del administrador.
+
+En Catálogo, completar Nombre del producto y Precio en soles. La foto es opcional y se guarda junto con el producto; el código se genera automáticamente si no se escribe. Marcar Mostrar en la tienda pública para publicarlo. Más opciones contiene código propio, categoría, talla/color, descripción y promociones. Las cargas CSV y fotos adicionales están en Importar varios productos o añadir más fotos. Crear/publicar no agrega existencias: el propietario o almacén las registra en Inventario con costo y referencia.
+
+Para consultar invitaciones antiguas, abre Ver todo el historial de invitaciones. La vista completa tiene páginas de 25 registros y las mismas acciones de reenvío y revocación.

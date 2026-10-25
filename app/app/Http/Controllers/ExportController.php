@@ -11,7 +11,8 @@ class ExportController extends Controller
 {
     public function __invoke(Request $request, string $slug, string $scope): StreamedResponse
     {
-        abort_unless($request->attributes->get('membership')->role === 'owner', 403);
+        $role = $request->attributes->get('membership')->role;
+        abort_unless($role === 'owner' || ($role === 'catalog' && $scope === 'productos'), 403);
         $tenant = $request->attributes->get('tenant')->id;
         $query = match ($scope) {
             'productos' => DB::table('products')->where('tenant_id', $tenant)->orderBy('sku')->select(['sku', 'name', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'price_minor', 'compare_at_minor', 'published']),

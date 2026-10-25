@@ -36,6 +36,7 @@ type Product = {
 const props = defineProps<{
     tenant: { name: string; slug: string };
     managing: boolean;
+    role?: string | null;
     preview?: boolean;
     categories: string[];
     category: string;
@@ -117,7 +118,9 @@ const form = useForm({
     size: '',
     color: '',
     description: '',
+    image: null as File | null,
 });
+const photoVersion = ref(0);
 const importFile = useForm({ file: null as File | null });
 const importCommit = useForm({ token: props.importPreview?.token || '' });
 const photoProduct = ref('');
@@ -136,6 +139,8 @@ function edit(p: Product) {
     form.size = p.size;
     form.color = p.color;
     form.description = p.description;
+    form.image = null;
+    photoVersion.value++;
     price.value = (p.price_minor / 100).toFixed(2);
     comparePrice.value = p.compare_at_minor
         ? (p.compare_at_minor / 100).toFixed(2)
@@ -146,6 +151,7 @@ function reset() {
     form.reset();
     price.value = '';
     comparePrice.value = '';
+    photoVersion.value++;
 }
 const price = ref('');
 const comparePrice = ref('');
@@ -155,15 +161,19 @@ function save() {
         form.compare_at_minor = comparePrice.value.trim()
             ? minor(comparePrice.value)
             : null;
-        form.submit(
-            editing.value ? 'patch' : 'post',
+        form.transform((data) => ({
+            ...data,
+            ...(editing.value ? { _method: 'patch' } : {}),
+        })).post(
             `/gestion/${props.tenant.slug}/productos${editing.value ? '/' + editing.value : ''}`,
             {
+                forceFormData: true,
                 onSuccess: () => {
                     form.reset();
                     price.value = '';
                     comparePrice.value = '';
                     editing.value = null;
+                    photoVersion.value++;
                 },
             },
         );
@@ -276,6 +286,12 @@ const storefrontStyle = computed(() => ({
     '--store-primary': theme.value,
     '--store-accent': accent.value,
 }));
+const fashionBusiness = computed(() =>
+    ['fashion', 'footwear', 'accessories'].includes(
+        props.settings.business_type ||
+            (page.props.singleBusiness ? 'general' : 'fashion'),
+    ),
+);
 const sectionDefinitions = {
     all: { label: 'Todo', icon: LayoutGrid, query: '' },
     women: { label: 'Mujer', icon: Sparkles, query: 'women' },
@@ -295,7 +311,18 @@ const sectionLinks = computed(() => {
         .filter((key): key is keyof typeof sectionDefinitions =>
             Object.hasOwn(sectionDefinitions, key),
         )
-        .map((key) => ({ key, ...sectionDefinitions[key] }));
+        .filter(
+            (key) =>
+                fashionBusiness.value ||
+                !['women', 'men', 'kids'].includes(key),
+        )
+        .map((key) => ({
+            key,
+            ...sectionDefinitions[key],
+            ...(key === 'trends' && !fashionBusiness.value
+                ? { label: 'Destacados' }
+                : {}),
+        }));
 });
 const deliveryOptions = computed(() => {
     const enabled = props.settings.delivery_methods || [
@@ -350,27 +377,28 @@ const storefrontTheme = computed(() =>
         : 'classic',
 );
 const themeClass = computed(() => `storefront-theme-${storefrontTheme.value}`);
-const themeEyebrow = computed(
-    () =>
-        ({
-            classic: 'BIENVENIDO A NUESTRA TIENDA',
-            urban: 'NUEVA COLECCIÓN · STREET EDIT',
-            elegant: 'UNA SELECCIÓN PARA TI',
-            feminine: 'FEMENINO · SUAVE · AUTÉNTICO',
-            pastel: 'BOUTIQUE DE TEMPORADA',
-            glamour: 'GLAMOUR · EDICIÓN ESPECIAL',
-            sport: 'MUÉVETE SIN LÍMITES',
-            footwear: 'CALZADO · COLECCIÓN EDITORIAL',
-            minimal: 'MENOS RUIDO · MÁS ESTILO',
-            vintage: 'PIEZAS CON HISTORIA',
-        })[storefrontTheme.value || 'classic'],
+const themeEyebrow = computed(() =>
+    !fashionBusiness.value
+        ? 'BIENVENIDO A NUESTRO NEGOCIO'
+        : {
+              classic: 'BIENVENIDO A NUESTRA TIENDA',
+              urban: 'NUEVA COLECCIÓN · STREET EDIT',
+              elegant: 'UNA SELECCIÓN PARA TI',
+              feminine: 'FEMENINO · SUAVE · AUTÉNTICO',
+              pastel: 'BOUTIQUE DE TEMPORADA',
+              glamour: 'GLAMOUR · EDICIÓN ESPECIAL',
+              sport: 'MUÉVETE SIN LÍMITES',
+              footwear: 'CALZADO · COLECCIÓN EDITORIAL',
+              minimal: 'MENOS RUIDO · MÁS ESTILO',
+              vintage: 'PIEZAS CON HISTORIA',
+          }[storefrontTheme.value || 'classic'],
 );
 </script>
 <template>
     <Head :title="tenant.name" /><component
         :is="managing ? BusinessShell : 'div'"
         :tenant="tenant"
-        role="owner"
+        :role="role || 'owner'"
         section="catalogo"
         class="sas-app storefront min-h-screen text-slate-900"
         :class="themeClass"
@@ -393,12 +421,14 @@ const themeEyebrow = computed(
                 >
                 <div class="flex gap-5 text-sm">
                     <Link
+                        v-if="!page.props.singleBusiness"
                         :href="settings.marketplace_url || '/'"
                         class="storefront-home-link"
                         aria-label="Volver a todas las tiendas"
                         ><ArrowLeft :size="16" />
                         <span>Todas las tiendas</span></Link
                     >
+                    <Link v-else href="/">Inicio</Link>
                     <Link :href="`/tienda/${tenant.slug}/seguimiento`"
                         >Seguir mi pedido</Link
                     ><a href="#carrito" class="storefront-cart-link"
@@ -495,7 +525,8 @@ const themeEyebrow = computed(
                 </p>
                 <h1 class="mt-2 text-3xl font-semibold">Tu catálogo</h1>
                 <p class="mt-3 text-slate-500">
-                    Cada SKU identifica una unidad o variante vendible.
+                    Crea productos, añade fotos y decide cuáles mostrar en tu
+                    tienda.
                 </p></template
             >
             <form method="get" class="catalog-search my-7 flex gap-3">
@@ -530,111 +561,154 @@ const themeEyebrow = computed(
             <form
                 id="product-form"
                 v-if="managing"
-                class="mb-9 grid gap-4 rounded-2xl border bg-white p-6 md:grid-cols-2"
+                class="mb-9 grid gap-5 rounded-2xl border bg-white p-6 md:grid-cols-2"
                 @submit.prevent="save"
             >
-                <h2 class="text-lg font-semibold md:col-span-2">
-                    {{
-                        editing
-                            ? 'Editar producto'
-                            : 'Nuevo producto o variante'
-                    }}
-                </h2>
+                <div class="md:col-span-2">
+                    <h2 class="text-xl font-semibold">
+                        {{ editing ? 'Editar producto' : 'Subir un producto' }}
+                    </h2>
+                    <p class="mt-2 text-sm text-slate-500">
+                        Completa el nombre y precio. Puedes añadir una foto
+                        ahora. El propietario o almacén registra las existencias
+                        desde Inventario.
+                    </p>
+                </div>
                 <label class="grid gap-2 text-sm"
-                    >SKU<input
-                        v-model="form.sku"
-                        required
-                        maxlength="64"
-                        class="rounded-xl border p-3"
-                    /><span class="text-red-700">{{
-                        form.errors.sku
-                    }}</span></label
-                ><label class="grid gap-2 text-sm"
-                    >Nombre y variante<input
+                    >Nombre del producto<input
                         v-model="form.name"
                         required
                         maxlength="160"
-                        placeholder="Ej. Polo algodón · Azul · M"
+                        placeholder="Ej. Polo de algodón azul"
                         class="rounded-xl border p-3"
-                    /><span class="text-red-700">{{
-                        form.errors.name
-                    }}</span></label
-                ><label class="grid gap-2 text-sm"
-                    >Precio S/<input
+                /></label>
+                <label class="grid gap-2 text-sm"
+                    >Precio en soles<input
                         v-model="price"
                         inputmode="decimal"
                         required
-                        placeholder="0.00"
+                        placeholder="59.90"
                         class="rounded-xl border p-3"
-                    /><span class="text-red-700">{{
-                        form.errors.price_minor
-                    }}</span></label
-                ><label class="flex items-center gap-3 text-sm"
-                    ><input v-model="form.published" type="checkbox" />Publicar
-                    en tienda</label
-                ><label class="grid gap-2 text-sm"
-                    >Precio anterior S/ (promoción)<input
-                        v-model="comparePrice"
-                        inputmode="decimal"
-                        placeholder="Opcional, debe ser mayor"
+                /></label>
+                <label class="grid gap-2 text-sm md:col-span-2"
+                    >Foto del producto (opcional)<input
+                        :key="photoVersion"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
                         class="rounded-xl border p-3"
-                    /><span class="text-red-700">{{
-                        form.errors.compare_at_minor
-                    }}</span></label
-                ><label class="grid gap-2 text-sm"
-                    >Sección principal<select
-                        v-model="form.audience"
-                        class="rounded-xl border bg-white p-3"
-                    >
-                        <option value="unisex">Unisex</option>
-                        <option value="women">Mujer</option>
-                        <option value="men">Hombre</option>
-                        <option value="kids">Niños</option>
-                    </select></label
-                ><label class="flex items-center gap-3 text-sm"
-                    ><input v-model="form.trending" type="checkbox" />Mostrar en
-                    Tendencias</label
-                ><label class="grid gap-2 text-sm"
-                    >Categoría<input
-                        v-model="form.category"
-                        maxlength="100"
-                        class="rounded-xl border p-3" /></label
-                ><label class="grid gap-2 text-sm"
-                    >Grupo de variantes (opcional)<input
-                        v-model="form.variant_group"
-                        maxlength="100"
-                        placeholder="Ej. Polo algodón"
-                        class="rounded-xl border p-3" /></label
-                ><label class="grid gap-2 text-sm"
-                    >Talla<input
-                        v-model="form.size"
-                        maxlength="40"
-                        placeholder="Ej. M, L, 38"
-                        class="rounded-xl border p-3"
-                    /><span class="text-red-700">{{
-                        form.errors.size
-                    }}</span></label
-                ><label class="grid gap-2 text-sm"
-                    >Color<input
-                        v-model="form.color"
-                        maxlength="60"
-                        placeholder="Ej. Negro"
-                        class="rounded-xl border p-3"
-                    /><span class="text-red-700">{{
-                        form.errors.color
-                    }}</span></label
-                ><label class="grid gap-2 text-sm md:col-span-2"
-                    >Descripción<textarea
-                        v-model="form.description"
-                        maxlength="3000"
-                        rows="3"
-                        class="rounded-xl border p-3"
-                    /></label
-                ><button
-                    :disabled="form.processing"
-                    class="rounded-xl bg-emerald-800 p-3 text-white disabled:opacity-50"
+                        @change="
+                            form.image =
+                                ($event.target as HTMLInputElement)
+                                    .files?.[0] || null
+                        "
+                    /><small class="text-slate-500"
+                        >JPG, PNG o WEBP. Hasta 3 MB. Se procesa una copia sin
+                        metadatos.</small
+                    ></label
                 >
-                    Guardar producto
+                <label class="flex items-center gap-3 text-sm md:col-span-2"
+                    ><input v-model="form.published" type="checkbox" />Mostrar
+                    en la tienda pública</label
+                >
+                <details
+                    :open="!!editing"
+                    class="rounded-xl border p-4 md:col-span-2"
+                >
+                    <summary class="cursor-pointer font-medium">
+                        Más opciones: código, categoría, tallas y promociones
+                    </summary>
+                    <div class="mt-5 grid gap-4 md:grid-cols-2">
+                        <label class="grid gap-2 text-sm"
+                            >Código del producto (opcional)<input
+                                v-model="form.sku"
+                                :required="!!editing"
+                                maxlength="64"
+                                placeholder="Se genera automáticamente"
+                                class="rounded-xl border p-3"
+                        /></label>
+                        <label class="grid gap-2 text-sm"
+                            >Categoría<input
+                                v-model="form.category"
+                                maxlength="100"
+                                placeholder="Ej. Ropa"
+                                class="rounded-xl border p-3"
+                        /></label>
+                        <label v-if="fashionBusiness" class="grid gap-2 text-sm"
+                            >Sección principal<select
+                                v-model="form.audience"
+                                class="rounded-xl border bg-white p-3"
+                            >
+                                <option value="unisex">Unisex</option>
+                                <option value="women">Mujer</option>
+                                <option value="men">Hombre</option>
+                                <option value="kids">Niños</option>
+                            </select></label
+                        >
+                        <label class="grid gap-2 text-sm"
+                            >Precio anterior (promoción)<input
+                                v-model="comparePrice"
+                                inputmode="decimal"
+                                placeholder="Opcional, mayor al precio actual"
+                                class="rounded-xl border p-3"
+                        /></label>
+                        <label
+                            class="flex items-center gap-3 text-sm md:col-span-2"
+                            ><input
+                                v-model="form.trending"
+                                type="checkbox"
+                            />Mostrar en Tendencias</label
+                        >
+                        <label class="grid gap-2 text-sm md:col-span-2"
+                            >Grupo de variantes<input
+                                v-model="form.variant_group"
+                                maxlength="100"
+                                placeholder="Ej. Polo de algodón"
+                                class="rounded-xl border p-3"
+                        /></label>
+                        <label class="grid gap-2 text-sm"
+                            >Talla<input
+                                v-model="form.size"
+                                maxlength="40"
+                                placeholder="Ej. M, L, 38"
+                                class="rounded-xl border p-3"
+                        /></label>
+                        <label class="grid gap-2 text-sm"
+                            >Color<input
+                                v-model="form.color"
+                                maxlength="60"
+                                placeholder="Ej. Azul"
+                                class="rounded-xl border p-3"
+                        /></label>
+                        <label class="grid gap-2 text-sm md:col-span-2"
+                            >Descripción<textarea
+                                v-model="form.description"
+                                maxlength="3000"
+                                rows="3"
+                                class="rounded-xl border p-3"
+                            />
+                        </label>
+                    </div>
+                </details>
+                <div
+                    v-if="Object.keys(form.errors).length"
+                    role="alert"
+                    class="rounded-xl bg-red-50 p-4 text-sm text-red-700 md:col-span-2"
+                >
+                    <p v-for="(error, field) in form.errors" :key="field">
+                        {{ error }}
+                    </p>
+                </div>
+                <p
+                    v-if="form.progress && form.image"
+                    class="text-sm text-slate-500 md:col-span-2"
+                >
+                    Subiendo foto: {{ form.progress.percentage }}%
+                </p>
+                <button
+                    :disabled="form.processing"
+                    class="rounded-xl bg-emerald-800 p-3 font-semibold text-white disabled:opacity-50"
+                >
+                    {{ form.processing ? 'Guardando…' : 'Guardar producto' }}
                 </button>
                 <button
                     v-if="editing"
@@ -663,110 +737,121 @@ const themeEyebrow = computed(
                     >Volver al editor</Link
                 >
             </div>
-            <section v-if="managing" class="mb-8 grid gap-5 lg:grid-cols-2">
-                <form
-                    class="grid gap-4 rounded-2xl border bg-white p-6"
-                    @submit.prevent="
-                        importFile.post(`/gestion/${tenant.slug}/importar`, {
-                            forceFormData: true,
-                        })
-                    "
-                >
-                    <h2 class="font-semibold">Importar catálogo CSV</h2>
-                    <p class="text-xs leading-relaxed text-slate-500">
-                        Hasta 2000 filas. Encabezados:
-                        sku,nombre,precio,categoria,grupo,publicado. Precio en
-                        soles, punto decimal; publicado: 1 o 0. Los SKU
-                        existentes se actualizan.
-                    </p>
-                    <input
-                        type="file"
-                        accept=".csv,.txt"
-                        required
-                        aria-label="Archivo de catálogo"
-                        @change="
-                            importFile.file =
-                                ($event.target as HTMLInputElement)
-                                    .files?.[0] || null
+            <details
+                v-if="managing"
+                class="mb-8 rounded-2xl border bg-white p-5"
+            >
+                <summary class="cursor-pointer font-medium">
+                    Importar varios productos o añadir más fotos
+                </summary>
+                <section class="mt-5 grid gap-5 lg:grid-cols-2">
+                    <form
+                        class="grid gap-4 rounded-2xl border bg-white p-6"
+                        @submit.prevent="
+                            importFile.post(
+                                `/gestion/${tenant.slug}/importar`,
+                                {
+                                    forceFormData: true,
+                                },
+                            )
                         "
-                    />
-                    <p
-                        v-for="(e, k) in importFile.errors"
-                        :key="k"
-                        class="text-sm text-red-700"
                     >
-                        {{ e }}
-                    </p>
-                    <button
-                        :disabled="importFile.processing"
-                        class="rounded-xl border p-3"
-                    >
-                        Validar y revisar muestra</button
-                    ><a
-                        :href="`/gestion/${tenant.slug}/exportar/productos`"
-                        class="text-sm text-emerald-700"
-                        >Exportar catálogo privado CSV</a
-                    >
-                </form>
-                <form
-                    class="grid gap-4 rounded-2xl border bg-white p-6"
-                    @submit.prevent="
-                        photo.post(
-                            `/gestion/${tenant.slug}/productos/${photoProduct}/foto`,
-                            {
-                                forceFormData: true,
-                                onSuccess: () => photo.reset(),
-                            },
-                        )
-                    "
-                >
-                    <h2 class="font-semibold">Fotos del producto</h2>
-                    <select
-                        v-model="photoProduct"
-                        required
-                        aria-label="Producto de la foto"
-                        class="rounded-xl border p-3"
-                    >
-                        <option value="">
-                            Seleccionar producto de esta página
-                        </option>
-                        <option
-                            v-for="p in products.data"
-                            :key="p.id"
-                            :value="p.id"
+                        <h2 class="font-semibold">Importar catálogo CSV</h2>
+                        <p class="text-xs leading-relaxed text-slate-500">
+                            Hasta 2000 filas. Encabezados:
+                            sku,nombre,precio,categoria,grupo,publicado. Precio
+                            en soles, punto decimal; publicado: 1 o 0. Los SKU
+                            existentes se actualizan.
+                        </p>
+                        <input
+                            type="file"
+                            accept=".csv,.txt"
+                            required
+                            aria-label="Archivo de catálogo"
+                            @change="
+                                importFile.file =
+                                    ($event.target as HTMLInputElement)
+                                        .files?.[0] || null
+                            "
+                        />
+                        <p
+                            v-for="(e, k) in importFile.errors"
+                            :key="k"
+                            class="text-sm text-red-700"
                         >
-                            {{ p.sku }} · {{ p.name }}
-                        </option></select
-                    ><input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        required
-                        aria-label="Imagen del producto"
-                        @change="
-                            photo.image =
-                                ($event.target as HTMLInputElement)
-                                    .files?.[0] || null
+                            {{ e }}
+                        </p>
+                        <button
+                            :disabled="importFile.processing"
+                            class="rounded-xl border p-3"
+                        >
+                            Validar y revisar muestra</button
+                        ><a
+                            :href="`/gestion/${tenant.slug}/exportar/productos`"
+                            class="text-sm text-emerald-700"
+                            >Exportar catálogo privado CSV</a
+                        >
+                    </form>
+                    <form
+                        class="grid gap-4 rounded-2xl border bg-white p-6"
+                        @submit.prevent="
+                            photo.post(
+                                `/gestion/${tenant.slug}/productos/${photoProduct}/foto`,
+                                {
+                                    forceFormData: true,
+                                    onSuccess: () => photo.reset(),
+                                },
+                            )
                         "
-                    />
-                    <p class="text-xs text-slate-500">
-                        Hasta 3 MB y 4000 px. Se procesa una copia sin metadatos
-                        originales. Máximo ocho fotos.
-                    </p>
-                    <p
-                        v-for="(e, k) in photo.errors"
-                        :key="k"
-                        class="text-sm text-red-700"
                     >
-                        {{ e }}
-                    </p>
-                    <button
-                        :disabled="photo.processing"
-                        class="rounded-xl border p-3"
-                    >
-                        Guardar foto
-                    </button>
-                </form>
-            </section>
+                        <h2 class="font-semibold">Fotos del producto</h2>
+                        <select
+                            v-model="photoProduct"
+                            required
+                            aria-label="Producto de la foto"
+                            class="rounded-xl border p-3"
+                        >
+                            <option value="">
+                                Seleccionar producto de esta página
+                            </option>
+                            <option
+                                v-for="p in products.data"
+                                :key="p.id"
+                                :value="p.id"
+                            >
+                                {{ p.sku }} · {{ p.name }}
+                            </option></select
+                        ><input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            required
+                            aria-label="Imagen del producto"
+                            @change="
+                                photo.image =
+                                    ($event.target as HTMLInputElement)
+                                        .files?.[0] || null
+                            "
+                        />
+                        <p class="text-xs text-slate-500">
+                            Hasta 3 MB y 4000 px. Se procesa una copia sin
+                            metadatos originales. Máximo ocho fotos.
+                        </p>
+                        <p
+                            v-for="(e, k) in photo.errors"
+                            :key="k"
+                            class="text-sm text-red-700"
+                        >
+                            {{ e }}
+                        </p>
+                        <button
+                            :disabled="photo.processing"
+                            class="rounded-xl border p-3"
+                        >
+                            Guardar foto
+                        </button>
+                    </form>
+                </section>
+            </details>
             <section
                 v-if="managing && importPreview"
                 class="mb-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6"
@@ -836,7 +921,9 @@ const themeEyebrow = computed(
                                 }}</span>
                             </div>
                             <div class="product-commerce-badges">
-                                <span>{{ audienceLabel(p.audience) }}</span>
+                                <span v-if="fashionBusiness">{{
+                                    audienceLabel(p.audience)
+                                }}</span>
                                 <span v-if="p.size" class="variant"
                                     >Talla {{ p.size }}</span
                                 >

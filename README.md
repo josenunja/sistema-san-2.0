@@ -1,6 +1,8 @@
 # SAS SAN
 
-Aplicación local multiempresa en español para catálogo, inventario, compras, pedidos, POS, caja y crédito. Laravel 13, Vue 3 y PostgreSQL 18.6. La especificación mejorada está en docs/ESPECIFICACION_MEJORADA.md; el alcance y sus límites están en docs/PROGRESS.md.
+Sistema reutilizable en español para catálogo, inventario, compras, pedidos, POS, caja y crédito. Cada copia nueva se configura para una sola empresa: ropa, panadería, mecánica u otro negocio. Laravel 13, Vue 3 y PostgreSQL 18.6. La especificación está en docs/ESPECIFICACION_MEJORADA.md; el alcance y sus límites están en docs/PROGRESS.md.
+
+Para preparar una copia independiente, usa `preparar-copia.ps1` con nombre, identificador, rubro y puerto. Consulta [Copias independientes](docs/COPIAS_INDEPENDIENTES.md). Cada copia necesita su propia base, claves y archivos privados; no reutilices `.env`, `.runtime` ni volúmenes de otra empresa. El modo de plataforma anterior permanece disponible solo cuando se configura explícitamente `BUSINESS_MODE=platform`.
 
 ## Abrir en este equipo
 
@@ -18,7 +20,7 @@ El entorno portátil ya preparado está en `.runtime/`: PHP 8.4.26 y PostgreSQL 
 
 Docker Desktop presentó errores de entrada/salida en su disco virtual incluso tras el reinicio autorizado. No se reinicializó ni borró ese disco. La base nativa es independiente: no se afirma haber recuperado datos anteriores de Docker. El modo alternativo `.\iniciar.ps1 -Modo Docker` solo debe usarse cuando Docker vuelva a estar sano; sus datos son distintos de los nativos.
 
-## Recorrido de uso
+## Recorrido de uso en modo plataforma (opcional)
 
 1. El superadministrador crea la empresa, selecciona su plan e indica el correo del propietario. El sistema genera una invitación de 48 horas; el vendedor elige su propia contraseña y activa MFA. El administrador de plataforma nunca necesita conocer esa contraseña.
 2. El nuevo propietario abre **Configurar tienda**, sube su logo y una portada, completa nombre, descripción, contacto, redes y ubicación, y elige uno de diez estilos compartidos: Clásico, Urban Freestyle, Elegante, Femenino Chic, Boutique Pastel, Glamour, Deportivo, Calzado Premium, Minimalista o Vintage. También puede elegir colores, ordenar el menú, publicar horarios, activar recojo/delivery/courier/envío nacional, destacar un cupón y reservar un dominio propio. Puede guardar un borrador privado con vista previa o publicar la versión; el dominio requiere además DNS y TLS configurados fuera de la aplicación.

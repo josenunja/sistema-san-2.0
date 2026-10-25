@@ -1,4 +1,5 @@
 .runtime/
+copias/
 *.log
 **/.env
 **/.env.*

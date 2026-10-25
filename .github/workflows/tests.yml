@@ -64,7 +64,7 @@ jobs:
           APP_ENV: testing
           DB_USERNAME: sas_runtime
         run: |
-          php artisan test --filter='Tenant|Commerce|Offline|Platform|Catalog|Customer|Fiscal'
+          php artisan test --filter='Tenant|Commerce|Offline|Platform|Catalog|Customer|Fiscal|StoreOnboarding|SingleBusiness'
           php artisan testing:stock-race
           php artisan testing:operation-races
       - name: Dependency review

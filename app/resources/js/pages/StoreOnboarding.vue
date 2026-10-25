@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { businessTypes } from '@/lib/businessTypes';
 import {
     ArrowLeft,
     ArrowRight,
@@ -116,10 +117,10 @@ const dayLabels: Record<string, string> = {
 };
 const form = useForm({
     name: props.settings.store_name || props.tenant.name,
-    business_type: props.settings.business_type || 'fashion',
+    business_type: props.settings.business_type || 'general',
     tagline:
         props.settings.tagline ||
-        'Prendas que hablan de ti, seleccionadas con intención.',
+        'Productos elegidos para ti y atención cercana.',
     description: props.settings.description || '',
     whatsapp: props.settings.whatsapp || '',
     location: props.settings.location || '',
@@ -300,8 +301,8 @@ onUnmounted(() => {
                 <span class="progress-kicker">CONFIGURACIÓN DE TIENDA</span>
                 <h1>Dale identidad a tu negocio.</h1>
                 <p>
-                    Tu catálogo, tus datos y tu estilo se mantienen separados de
-                    las demás empresas.
+                    Tu catálogo, tus datos y tu estilo se mantienen protegidos
+                    en esta instalación.
                 </p>
                 <div class="progress-line">
                     <i :style="{ width: progress }"></i>
@@ -418,19 +419,13 @@ onUnmounted(() => {
                                         v-model="form.business_type"
                                         required
                                     >
-                                        <option value="fashion">
-                                            Moda y ropa
+                                        <option
+                                            v-for="type in businessTypes"
+                                            :key="type.value"
+                                            :value="type.value"
+                                        >
+                                            {{ type.label }}
                                         </option>
-                                        <option value="footwear">
-                                            Calzado
-                                        </option>
-                                        <option value="accessories">
-                                            Accesorios
-                                        </option>
-                                        <option value="mixed">
-                                            Tienda variada
-                                        </option>
-                                        <option value="other">Otro</option>
                                     </select></label
                                 >
                             </div>
@@ -520,7 +515,14 @@ onUnmounted(() => {
                                 </span>
                             </label>
                         </div>
-                        <div class="section-sorter">
+                        <div
+                            v-if="
+                                ['fashion', 'footwear', 'accessories'].includes(
+                                    form.business_type,
+                                )
+                            "
+                            class="section-sorter"
+                        >
                             <div>
                                 <strong>Orden del menú</strong>
                                 <small

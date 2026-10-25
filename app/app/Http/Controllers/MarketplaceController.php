@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -18,8 +19,22 @@ class MarketplaceController extends Controller
         'kids' => 'kids',
     ];
 
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
+        if (config('business.single')) {
+            $tenant = $request->attributes->get('instance_tenant');
+            if ($tenant === null) {
+                return redirect('/instalacion');
+            }
+            abort_unless($tenant->active, 404);
+
+            return DB::transaction(function () use ($request, $tenant): Response {
+                DB::select("select set_config('app.tenant_id', ?, true)", [(string) $tenant->id]);
+                $request->attributes->set('tenant', $tenant);
+
+                return app(CatalogController::class)->index($request);
+            });
+        }
         $customStorefront = $this->customStorefront($request);
         if ($customStorefront instanceof Response) {
             return $customStorefront;

@@ -33,7 +33,12 @@ const props = defineProps<{
 const open = ref(false);
 const items = [
     { key: 'resumen', label: 'Resumen', roles: ['owner'], icon: BarChart3 },
-    { key: 'catalogo', label: 'Catálogo', roles: ['owner'], icon: Package },
+    {
+        key: 'catalogo',
+        label: 'Catálogo',
+        roles: ['owner', 'catalog'],
+        icon: Package,
+    },
     {
         key: 'inventario',
         label: 'Inventario',
@@ -97,7 +102,9 @@ const roleLabel = computed(() =>
         ? 'Caja'
         : props.role === 'warehouse'
           ? 'Almacén'
-          : 'Administración',
+          : props.role === 'catalog'
+            ? 'Catálogo'
+            : 'Administración',
 );
 function href(key: string) {
     return key === 'catalogo'

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\BusinessTypes;
 use App\Services\Commerce;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,7 +57,7 @@ class StoreOnboardingController extends Controller
         $request->merge(['custom_domain' => $domain === '' ? null : $domain]);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:160'],
-            'business_type' => ['required', Rule::in(['fashion', 'footwear', 'accessories', 'mixed', 'other'])],
+            'business_type' => ['required', Rule::in(BusinessTypes::VALUES)],
             'tagline' => ['required', 'string', 'max:300'],
             'description' => ['nullable', 'string', 'max:1000'],
             'whatsapp' => ['nullable', 'regex:/^[1-9][0-9]{7,14}$/'],

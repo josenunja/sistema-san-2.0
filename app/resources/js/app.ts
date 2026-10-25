@@ -21,6 +21,7 @@ void createInertiaApp({
                 'Setup',
                 'Offline',
                 'Invitation',
+                'Invitations',
                 'Product',
                 'CustomerAccount',
                 'CustomerHub',

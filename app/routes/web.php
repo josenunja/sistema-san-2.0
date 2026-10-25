@@ -34,7 +34,7 @@ Route::get('/tienda/{slug}/producto/{productId}/foto/{imageId?}', function (Requ
     $product = DB::table('products')->where('tenant_id', $tenant->id)->where('id', $productId)->first();
     abort_unless($product !== null, 404);
     if (! $product->published) {
-        abort_unless($request->user()?->two_factor_confirmed_at && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->where('role', 'owner')->exists(), 404);
+        abort_unless($request->user()?->two_factor_confirmed_at && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereIn('role', ['owner', 'catalog'])->exists(), 404);
     }
     $path = $imageId ? DB::table('product_images')->where('tenant_id', $tenant->id)->where('product_id', $productId)->where('id', $imageId)->value('path') : $product->image_path;
     abort_unless($path, 404);
@@ -58,6 +58,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/mis-pedidos', [CustomerHubController::class, 'orders'])->name('customer.hub.orders');
     Route::post('/mis-pedidos/notificaciones/leer', [CustomerHubController::class, 'readNotifications'])->name('customer.hub.notifications.read');
     Route::get('/dashboard', function () {
+        if (config('business.single')) {
+            $tenant = request()->attributes->get('instance_tenant');
+            abort_unless($tenant !== null, 404);
+            $role = DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', auth()->id())->value('role');
+            $destination = match ($role) {
+                'owner' => '/operacion/resumen',
+                'cashier' => '/operacion/pos',
+                'warehouse' => '/operacion/inventario',
+                'catalog' => '',
+                default => null,
+            };
+
+            return redirect($destination === null ? '/tienda/'.$tenant->slug.'/cuenta' : '/gestion/'.$tenant->slug.$destination);
+        }
         $stores = DB::table('tenants')->join('memberships', 'tenants.id', '=', 'memberships.tenant_id')->where('memberships.user_id', auth()->id())->where('tenants.active', true)->get(['tenants.name', 'tenants.slug', 'tenants.settings', 'memberships.role'])->map(function ($store) {
             $settings = json_decode($store->settings, true) ?: [];
             $store->onboarding_complete = isset($settings['onboarding_completed_at']);
@@ -76,10 +90,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
             'section' => '',
         ]);
     })->name('dashboard');
-    Route::get('/plataforma', [PlatformController::class, 'index'])->name('platform.index');
+    Route::get('/plataforma', [PlatformController::class, 'index'])->middleware('password.confirm')->name('platform.index');
     Route::post('/plataforma', [PlatformController::class, 'store'])->middleware('password.confirm')->name('platform.store');
     Route::patch('/plataforma/{id}', [PlatformController::class, 'update'])->whereNumber('id')->name('platform.update');
+    Route::post('/plataforma/{id}/catalogo', [PlatformController::class, 'catalogAccess'])->whereNumber('id')->middleware('password.confirm')->name('platform.catalog-access');
     Route::post('/invitaciones', [InvitationController::class, 'store'])->middleware('password.confirm')->name('invitations.store');
+    Route::get('/invitaciones/tienda/{tenantId}', [InvitationController::class, 'index'])->whereNumber('tenantId')->middleware('password.confirm')->name('invitations.index');
+    Route::post('/invitaciones/{id}/reenviar', [InvitationController::class, 'resend'])->whereUuid('id')->middleware(['password.confirm', 'throttle:6,1'])->name('invitations.resend');
+    Route::post('/invitaciones/{id}/revocar', [InvitationController::class, 'revoke'])->whereUuid('id')->middleware(['password.confirm', 'throttle:20,1'])->name('invitations.revoke');
     Route::middleware(ResolveTenant::class)->group(function () {
         Route::get('/gestion/{slug}', [CatalogController::class, 'index'])->name('manage.catalog');
         Route::get('/gestion/{slug}/configurar', [StoreOnboardingController::class, 'show'])->name('manage.onboarding');
@@ -94,6 +112,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/gestion/{slug}/exportar/{scope}', ExportController::class)->name('manage.export');
         Route::delete('/gestion/{slug}/equipo/{memberId}', [TeamController::class, 'remove'])->whereNumber('memberId')->middleware('password.confirm')->name('manage.team.remove');
         Route::get('/gestion/{slug}/vista-previa/{versionId}', [CatalogController::class, 'index'])->whereNumber('versionId')->name('manage.preview');
+        Route::get('/gestion/{slug}/operacion/configuracion', [BusinessController::class, 'index'])->defaults('section', 'configuracion')->middleware('password.confirm')->name('manage.configuration');
         Route::get('/gestion/{slug}/operacion/{section?}', [BusinessController::class, 'index'])->name('manage.business');
         Route::post('/gestion/{slug}/operacion', [BusinessController::class, 'mutate'])->middleware('throttle:90,1')->name('manage.mutate');
         Route::get('/gestion/{slug}/pedido/{orderId}', [BusinessController::class, 'detail'])->whereUuid('orderId')->name('manage.order');

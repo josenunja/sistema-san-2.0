@@ -5,6 +5,7 @@ foreach($line in Get-Content -LiteralPath '.env.native'){
     if($line -match '^([A-Z_][A-Z0-9_]*)=(.*)$'){[Environment]::SetEnvironmentVariable($matches[1],$matches[2].Trim().Trim('"'),'Process')}
 }
 $env:APP_ENV='testing';$env:DB_DATABASE='sas_san_test';$env:DB_USERNAME='sas_runtime';$env:PRIVATE_STORAGE_ROOT=Join-Path $PSScriptRoot '.runtime\test-objects'
+$env:BUSINESS_MODE='platform'
 $access=Join-Path $PSScriptRoot '.runtime\demo-access.json'
 if(!$Reutilizar -or !(Test-Path -LiteralPath $access)){
     & '..\.runtime\php\php.exe' artisan testing:demo $access

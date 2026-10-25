@@ -1,8 +1,8 @@
-name: sas-san
+name: ${COMPOSE_PROJECT_NAME:-sas-san}
 services:
     app:
         build: .
-        ports: ['127.0.0.1:8000:8000']
+        ports: ['127.0.0.1:${APP_PORT:-8000}:8000']
         volumes:
             - .:/var/www/html
             - vendor_data:/var/www/html/vendor

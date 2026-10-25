@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Services\Commerce;
+use App\Services\ProductImages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -65,6 +68,7 @@ class CatalogController extends Controller
             'tenant' => ['name' => $storeName, 'slug' => $tenant->slug],
             'products' => $products, 'managing' => $managing, 'search' => $search,
             'preview' => $preview,
+            'role' => $managing ? $request->attributes->get('membership')->role : null,
             'category' => $category,
             'section' => $section,
             'categories' => DB::table('products')->where('tenant_id', $tenant->id)->when(! $managing, fn ($q) => $q->where('published', true))->where('category', '!=', '')->distinct()->orderBy('category')->pluck('category'),
@@ -107,7 +111,7 @@ class CatalogController extends Controller
             app(Commerce::class)->fail('Se alcanzó el límite de productos del plan.');
         }
         $data = $request->validate([
-            'sku' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9._-]+$/', Rule::unique('products', 'sku')->where('tenant_id', $tenant->id)],
+            'sku' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9._-]+$/', Rule::unique('products', 'sku')->where('tenant_id', $tenant->id)],
             'name' => ['required', 'string', 'max:160'],
             'price_minor' => ['required', 'integer', 'min:0', 'max:999999999'],
             'published' => ['required', 'boolean'],
@@ -119,16 +123,25 @@ class CatalogController extends Controller
             'size' => ['nullable', 'string', 'max:40'],
             'color' => ['nullable', 'string', 'max:60'],
             'description' => ['nullable', 'string', 'max:3000'],
+            'image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
         ]);
         foreach (['category', 'variant_group', 'size', 'color', 'description'] as $field) {
             $data[$field] ??= '';
         }
         $data['audience'] ??= 'unisex';
         $data['trending'] ??= false;
-        DB::table('products')->insert([...$data, 'tenant_id' => $tenant->id]);
-        app(Commerce::class)->audit($tenant->id, 'product_created');
+        $data['sku'] ??= 'PRD-'.strtoupper((string) Str::ulid());
+        unset($data['image']);
+        DB::transaction(function () use ($data, $tenant, $request) {
+            $id = DB::table('products')->insertGetId([...$data, 'tenant_id' => $tenant->id]);
+            $file = $request->file('image');
+            if ($file instanceof UploadedFile) {
+                app(ProductImages::class)->store((int) $tenant->id, (int) $id, $file);
+            }
+            app(Commerce::class)->audit($tenant->id, 'product_created');
+        });
 
-        return back();
+        return back()->with('success', 'Producto guardado. Las existencias se registran desde Inventario por el propietario o el responsable de almacén.');
     }
 
     public function product(Request $request, string $slug, int $productId): Response
@@ -137,7 +150,7 @@ class CatalogController extends Controller
         $product = DB::table('products')->where('tenant_id', $tenant->id)->where('id', $productId)->first(['id', 'name', 'sku', 'price_minor', 'compare_at_minor', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'description', 'published']);
         abort_unless($product !== null, 404);
         if (! $product->published) {
-            abort_unless($request->user()?->two_factor_confirmed_at && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->where('role', 'owner')->exists(), 404);
+            abort_unless($request->user()?->two_factor_confirmed_at && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereIn('role', ['owner', 'catalog'])->exists(), 404);
         }
         $images = DB::table('product_images')->where('tenant_id', $tenant->id)->where('product_id', $productId)->orderBy('id')->pluck('id')->map(fn ($id) => '/tienda/'.$slug.'/producto/'.$productId.'/foto/'.$id);
         $variants = $product->variant_group === '' ? collect() : DB::table('products')->where('tenant_id', $tenant->id)->where('variant_group', $product->variant_group)->where('published', true)->orderBy('size')->orderBy('color')->orderBy('name')->get(['id', 'name', 'price_minor', 'size', 'color']);

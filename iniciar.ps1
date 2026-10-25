@@ -50,4 +50,9 @@ if($Modo -eq 'Docker'){
         $scheduler.Id | Set-Content $schedulerPid
     }
 }
-Write-Host 'SAS SAN: catálogo público en http://localhost:8000 — configuración administrativa en http://localhost:8000/instalacion.'
+$publicUrl='http://localhost:8000'
+if($Modo -eq 'Docker'){
+    $urlLine=Get-Content -LiteralPath '.env' | Where-Object {$_ -match '^APP_URL='} | Select-Object -First 1
+    if($urlLine){$publicUrl=($urlLine -replace '^APP_URL=','').Trim().Trim('"')}
+}elseif($env:APP_URL){$publicUrl=$env:APP_URL}
+Write-Host "Sistema: $publicUrl — configuración inicial en $publicUrl/instalacion."
