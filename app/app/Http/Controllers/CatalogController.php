@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\BusinessLimits;
 use App\Services\Commerce;
 use App\Services\ProductImages;
+use App\Services\ScheduledPrices;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -36,13 +38,16 @@ class CatalogController extends Controller
         }
         $audience = in_array($section, ['women', 'men', 'kids'], true) ? $section : null;
         $products = DB::table('products')->where('tenant_id', $tenant->id)
-            ->when(! $managing, fn ($q) => $q->where('published', true))
+            ->when(! $managing, fn ($q) => $q->where('published', true)->where('archived', false))
             ->when($search !== '', fn ($q) => $q->where('name', 'ilike', '%'.$search.'%'))
             ->when($category !== '', fn ($q) => $q->where('category', $category))
             ->when($audience !== null, fn ($q) => $q->where('audience', $audience))
             ->when($section === 'trends', fn ($q) => $q->where('trending', true))
-            ->when($section === 'promotions', fn ($q) => $q->whereNotNull('compare_at_minor')->whereColumn('compare_at_minor', '>', 'price_minor'))
-            ->orderBy('name')->paginate(20, ['id', 'sku', 'name', 'price_minor', 'compare_at_minor', 'published', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'description', DB::raw('(image_path IS NOT NULL) AS has_image')])->withQueryString();
+            ->when($section === 'promotions', fn ($q) => app(ScheduledPrices::class)->promotions($q))
+            ->orderBy('name')->paginate(20, ['id', 'sku', 'name', 'price_minor', 'compare_at_minor', 'published', 'archived', 'barcode', 'minimum_stock', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'description', DB::raw('(image_path IS NOT NULL) AS has_image')])->withQueryString();
+        if (! $managing) {
+            app(ScheduledPrices::class)->decorate((int) $tenant->id, $products->getCollection(), 'web');
+        }
         $products->through(function ($product) use ($tenant) {
             $product->image_url = $product->has_image ? '/tienda/'.$tenant->slug.'/producto/'.$product->id.'/foto' : null;
 
@@ -71,7 +76,7 @@ class CatalogController extends Controller
             'role' => $managing ? $request->attributes->get('membership')->role : null,
             'category' => $category,
             'section' => $section,
-            'categories' => DB::table('products')->where('tenant_id', $tenant->id)->when(! $managing, fn ($q) => $q->where('published', true))->where('category', '!=', '')->distinct()->orderBy('category')->pluck('category'),
+            'categories' => DB::table('products')->where('tenant_id', $tenant->id)->when(! $managing, fn ($q) => $q->where('published', true)->where('archived', false))->where('category', '!=', '')->distinct()->orderBy('category')->pluck('category'),
             'importPreview' => $managing && is_array($importPreview) ? array_intersect_key($importPreview, array_flip(['token', 'count', 'sample'])) : null,
             'warehouses' => DB::table('warehouses')->where('tenant_id', $tenant->id)->get(['id', 'name', 'branch']),
             'settings' => [
@@ -98,6 +103,8 @@ class CatalogController extends Controller
             ],
             'availability' => DB::table('stock_positions')->where('tenant_id', $tenant->id)->selectRaw('product_id, sum(physical - reserved - blocked - offline) as available')->groupBy('product_id')->get(),
             'customer' => $customer,
+            'deliveryZones' => DB::table('delivery_zones')->where('tenant_id', $tenant->id)->where('enabled', true)->orderBy('name')->get(['id', 'method', 'name', 'address', 'fee_minor']),
+            'deliverySlots' => DB::table('delivery_slots')->where('tenant_id', $tenant->id)->where('enabled', true)->where('starts_at', '>', now())->orderBy('starts_at')->limit(200)->get(['id', 'method', 'starts_at', 'ends_at']),
             'featuredCoupon' => $featuredCoupon,
         ]);
     }
@@ -106,7 +113,7 @@ class CatalogController extends Controller
     {
         $tenant = $request->attributes->get('tenant');
         DB::select('SELECT pg_advisory_xact_lock(?)', [$tenant->id]);
-        $limit = DB::table('plans')->where('slug', $tenant->plan)->value('product_limit');
+        $limit = app(BusinessLimits::class)->limit((int) $tenant->id, 'product');
         if (DB::table('products')->where('tenant_id', $tenant->id)->count() >= $limit) {
             app(Commerce::class)->fail('Se alcanzó el límite de productos del plan.');
         }
@@ -114,7 +121,7 @@ class CatalogController extends Controller
             'sku' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9._-]+$/', Rule::unique('products', 'sku')->where('tenant_id', $tenant->id)],
             'name' => ['required', 'string', 'max:160'],
             'price_minor' => ['required', 'integer', 'min:0', 'max:999999999'],
-            'published' => ['required', 'boolean'],
+            'published' => ['required', 'boolean'], 'archived' => 'sometimes|boolean', 'minimum_stock' => 'sometimes|integer|min:0|max:1000000', 'barcode' => ['nullable', 'string', 'max:64', Rule::unique('products', 'barcode')->where('tenant_id', $tenant->id)],
             'category' => ['nullable', 'string', 'max:100'],
             'audience' => ['sometimes', Rule::in(['women', 'men', 'kids', 'unisex'])],
             'trending' => ['sometimes', 'boolean'],
@@ -147,14 +154,16 @@ class CatalogController extends Controller
     public function product(Request $request, string $slug, int $productId): Response
     {
         $tenant = $request->attributes->get('tenant');
-        $product = DB::table('products')->where('tenant_id', $tenant->id)->where('id', $productId)->first(['id', 'name', 'sku', 'price_minor', 'compare_at_minor', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'description', 'published']);
+        $product = DB::table('products')->where('tenant_id', $tenant->id)->where('id', $productId)->first(['id', 'name', 'sku', 'price_minor', 'compare_at_minor', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'description', 'published', 'archived']);
         abort_unless($product !== null, 404);
-        if (! $product->published) {
+        if (! $product->published || $product->archived) {
             abort_unless($request->user()?->two_factor_confirmed_at && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereIn('role', ['owner', 'catalog'])->exists(), 404);
         }
-        $images = DB::table('product_images')->where('tenant_id', $tenant->id)->where('product_id', $productId)->orderBy('id')->pluck('id')->map(fn ($id) => '/tienda/'.$slug.'/producto/'.$productId.'/foto/'.$id);
-        $variants = $product->variant_group === '' ? collect() : DB::table('products')->where('tenant_id', $tenant->id)->where('variant_group', $product->variant_group)->where('published', true)->orderBy('size')->orderBy('color')->orderBy('name')->get(['id', 'name', 'price_minor', 'size', 'color']);
+        $images = DB::table('product_images')->where('tenant_id', $tenant->id)->where('product_id', $productId)->orderBy('sort_order')->orderBy('id')->pluck('id')->map(fn ($id) => '/tienda/'.$slug.'/producto/'.$productId.'/foto/'.$id);
+        $variants = $product->variant_group === '' ? collect() : DB::table('products')->where('tenant_id', $tenant->id)->where('variant_group', $product->variant_group)->where('published', true)->where('archived', false)->orderBy('size')->orderBy('color')->orderBy('name')->get(['id', 'name', 'price_minor', 'size', 'color']);
         $variantAvailability = DB::table('stock_positions')->where('tenant_id', $tenant->id)->whereIn('product_id', $variants->pluck('id'))->selectRaw('product_id, sum(physical-reserved-blocked-offline) as available')->groupBy('product_id')->pluck('available', 'product_id');
+        app(ScheduledPrices::class)->decorate((int) $tenant->id, collect([$product]), 'web');
+        app(ScheduledPrices::class)->decorate((int) $tenant->id, $variants, 'web');
         $variants->each(function ($variant) use ($variantAvailability): void {
             $variant->available = (int) ($variantAvailability[$variant->id] ?? 0);
         });

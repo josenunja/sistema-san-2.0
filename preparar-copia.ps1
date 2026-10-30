@@ -17,7 +17,8 @@ $appTarget=Join-Path $target 'app'
 & robocopy $appSource $appTarget /E /XJ /NFL /NDL /NJH /NJS /NP /XD .git vendor node_modules .agents .codex .claude .cursor .junie .vscode .phpunit.cache .cache .vite .vite-temp (Join-Path $appSource 'storage') (Join-Path $appSource 'public/storage') (Join-Path $appSource 'bootstrap/cache') /XF .env '.env.*' auth.json hot .phpunit.result.cache .php-cs-fixer.cache '*.log' '*.pem' '*.key' '*.pfx' '*.p12' '*.dump' '*.ssbk' | Out-Null
 if($LASTEXITCODE -ge 8){throw 'No se pudo preparar la copia de código.'}
 Copy-Item -LiteralPath (Join-Path $root 'docs') -Destination $target -Recurse
-foreach($file in @('README.md','AGENTS.md','.gitignore','iniciar.ps1','verificar.ps1','preparar-copia.ps1','respaldo.ps1','probar-restauracion.ps1','aceptar-en-navegador.ps1','ver-accesos-demo.ps1')){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $target}
+if(Test-Path -LiteralPath (Join-Path $root '.github')){Copy-Item -LiteralPath (Join-Path $root '.github') -Destination $target -Recurse}
+foreach($file in @('README.md','AGENTS.md','.gitignore','iniciar.ps1','verificar.ps1','preparar-copia.ps1','preparar-produccion.ps1','respaldo.ps1','probar-restauracion.ps1','aceptar-en-navegador.ps1','ver-accesos-demo.ps1')){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $target}
 foreach($dir in @('storage/app/private','storage/framework/cache/data','storage/framework/sessions','storage/framework/views','storage/logs','bootstrap/cache')){New-Item -ItemType Directory -Force -Path (Join-Path $appTarget $dir) | Out-Null}
 $instanceTag=[guid]::NewGuid().ToString('N').Substring(0,8)
 $projectName='negocio-'+$Identificador+'-'+$instanceTag

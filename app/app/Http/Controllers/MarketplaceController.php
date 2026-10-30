@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\ScheduledPrices;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -133,12 +134,12 @@ class MarketplaceController extends Controller
             $audience = self::AUDIENCE_SECTIONS[$section] ?? null;
             $query = DB::table('products')
                 ->where('tenant_id', $tenant)
-                ->where('published', true)
+                ->where('published', true)->where('archived', false)
                 ->when($search !== '', fn ($query) => $query->where('name', 'ilike', '%'.$search.'%'))
                 ->when($category !== '', fn ($query) => $query->where('category', $category))
                 ->when($audience !== null, fn ($query) => $query->where('audience', $audience))
                 ->when($section === 'trends', fn ($query) => $query->where('trending', true))
-                ->when($section === 'promotions', fn ($query) => $query->whereNotNull('compare_at_minor')->whereColumn('compare_at_minor', '>', 'price_minor'));
+                ->when($section === 'promotions', fn ($q) => app(ScheduledPrices::class)->promotions($q));
             $total = (clone $query)->count();
             $products = $query
                 ->orderByDesc('created_at')
@@ -147,11 +148,13 @@ class MarketplaceController extends Controller
 
             $categories = DB::table('products')
                 ->where('tenant_id', $tenant)
-                ->where('published', true)
+                ->where('published', true)->where('archived', false)
                 ->where('category', '!=', '')
                 ->distinct()
                 ->pluck('category')
                 ->map(fn ($category): string => (string) $category);
+
+            app(ScheduledPrices::class)->decorate($tenant, $products, 'web');
 
             return ['products' => $products, 'categories' => $categories, 'total' => $total];
         });

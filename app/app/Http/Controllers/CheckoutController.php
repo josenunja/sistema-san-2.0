@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Commerce;
+use App\Services\DeliveryOptions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,19 +39,12 @@ class CheckoutController extends Controller
 
     public function quote(Request $request, Commerce $commerce): JsonResponse
     {
-        $data = $request->validate(['items' => 'required|array|min:1|max:100', 'items.*.product_id' => 'required|integer', 'items.*.quantity' => 'required|integer|min:1|max:10000', 'coupon' => 'nullable|string|max:40', 'delivery_method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])]]);
+        $data = $request->validate(['items' => 'required|array|min:1|max:100', 'items.*.product_id' => 'required|integer', 'items.*.quantity' => 'required|integer|min:1|max:10000', 'delivery_zone_id' => 'nullable|integer', 'delivery_slot_id' => 'nullable|integer', 'coupon' => 'nullable|string|max:40', 'delivery_method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])]]);
         $tenant = $request->attributes->get('tenant');
         $quote = $commerce->quote($tenant->id, $data['items'], $data['coupon'] ?? null, true);
-        $settings = json_decode($tenant->settings, true) ?: [];
-        $enabledMethods = $settings['delivery_methods'] ?? ['pickup', ...(isset($settings['delivery_minor']) ? ['delivery'] : [])];
-        if (! in_array($data['delivery_method'], $enabledMethods, true)) {
-            $commerce->fail('Este método de entrega no está disponible en la tienda.');
-        }
-        $feeKey = $data['delivery_method'].'_minor';
-        if ($data['delivery_method'] !== 'pickup' && ! isset($settings[$feeKey])) {
-            $commerce->fail('No se ha configurado la tarifa de este método de entrega.');
-        }
-        $quote['delivery_minor'] = $data['delivery_method'] === 'pickup' ? 0 : (int) $settings[$feeKey];
+        $shipping = app(DeliveryOptions::class)->quote((int) $tenant->id, $data);
+        $quote['delivery_minor'] = $shipping['fee_minor'];
+        $quote['delivery_label'] = $shipping['label'];
         $quote['total_minor'] += $quote['delivery_minor'];
         unset($quote['coupon_id']);
 

@@ -1,5 +1,7 @@
 # Una empresa por copia
 
+Actualización 30/10/2026: se instalaron tres entornos Docker sintéticos separados para ropa, panadería y mecánica; no son despliegues públicos. Ya hay scheduler/worker en Compose y una alternativa PHP-FPM/Caddy en compose.production.yaml. Sus secretos y datos de aceptación permanecen privados. Los límites de cada instalación single se configuran por BUSINESS_PRODUCT_LIMIT, BUSINESS_WAREHOUSE_LIMIT y BUSINESS_USER_LIMIT (5000/10/25 iniciales). Para la entrega actual consultar DESPLIEGUE_Y_ENTREGA.md y los resultados finales de PROGRESS.md.
+
 La solicitud del 25/10/2026 es reutilizar el mismo programa para negocios diferentes y que cada instalación atienda únicamente a una empresa. La aplicación local y las copias nuevas usan `BUSINESS_MODE=single`. La portada abre el catálogo de esa empresa, el acceso administrativo abre su propia gestión y las rutas de otras empresas quedan bloqueadas. No se muestra un directorio público de tiendas.
 
 ## Preparar otra copia

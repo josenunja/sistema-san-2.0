@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\BusinessController;
+use App\Http\Controllers\BusinessSearchController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\CatalogToolsController;
 use App\Http\Controllers\CheckoutController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\MarketplaceController;
 use App\Http\Controllers\OfflineController;
 use App\Http\Controllers\PlatformController;
+use App\Http\Controllers\ProductMediaController;
 use App\Http\Controllers\StoreOnboardingController;
 use App\Http\Controllers\TeamController;
 use App\Http\Middleware\ResolveTenant;
@@ -33,7 +35,7 @@ Route::get('/tienda/{slug}/producto/{productId}/foto/{imageId?}', function (Requ
     $tenant = $request->attributes->get('tenant');
     $product = DB::table('products')->where('tenant_id', $tenant->id)->where('id', $productId)->first();
     abort_unless($product !== null, 404);
-    if (! $product->published) {
+    if (! $product->published || $product->archived) {
         abort_unless($request->user()?->two_factor_confirmed_at && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereIn('role', ['owner', 'catalog'])->exists(), 404);
     }
     $path = $imageId ? DB::table('product_images')->where('tenant_id', $tenant->id)->where('product_id', $productId)->where('id', $imageId)->value('path') : $product->image_path;
@@ -100,17 +102,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/invitaciones/{id}/revocar', [InvitationController::class, 'revoke'])->whereUuid('id')->middleware(['password.confirm', 'throttle:20,1'])->name('invitations.revoke');
     Route::middleware(ResolveTenant::class)->group(function () {
         Route::get('/gestion/{slug}', [CatalogController::class, 'index'])->name('manage.catalog');
+        Route::get('/gestion/{slug}/buscar-productos', [BusinessSearchController::class, 'products'])->middleware('throttle:120,1')->name('manage.search.products');
+        Route::get('/gestion/{slug}/buscar-clientes', [BusinessSearchController::class, 'customers'])->middleware('throttle:60,1')->name('manage.search.customers');
         Route::get('/gestion/{slug}/configurar', [StoreOnboardingController::class, 'show'])->name('manage.onboarding');
         Route::post('/gestion/{slug}/configurar', [StoreOnboardingController::class, 'store'])->name('manage.onboarding.store');
         Route::get('/gestion/{slug}/marca/{versionId}', [StoreOnboardingController::class, 'previewLogo'])->whereNumber('versionId')->name('manage.onboarding.logo');
         Route::get('/gestion/{slug}/portada/{versionId}', [StoreOnboardingController::class, 'previewBanner'])->whereNumber('versionId')->name('manage.onboarding.banner');
         Route::post('/gestion/{slug}/productos', [CatalogController::class, 'store'])->name('manage.products.store');
+        Route::get('/gestion/{slug}/productos/{productId}/fotos', [ProductMediaController::class, 'index'])->whereNumber('productId')->name('manage.products.media');
+        Route::patch('/gestion/{slug}/productos/{productId}/fotos/{imageId}', [ProductMediaController::class, 'update'])->whereNumber('productId')->whereNumber('imageId')->name('manage.products.media.update');
+        Route::delete('/gestion/{slug}/productos/{productId}/fotos/{imageId}', [ProductMediaController::class, 'destroy'])->whereNumber('productId')->whereNumber('imageId')->name('manage.products.media.delete');
         Route::patch('/gestion/{slug}/productos/{productId}', [CatalogToolsController::class, 'update'])->whereNumber('productId')->name('manage.products.update');
         Route::post('/gestion/{slug}/productos/{productId}/foto', [CatalogToolsController::class, 'image'])->whereNumber('productId')->name('manage.products.image');
         Route::post('/gestion/{slug}/importar', [CatalogToolsController::class, 'preview'])->name('manage.import.preview');
         Route::post('/gestion/{slug}/importar/confirmar', [CatalogToolsController::class, 'commit'])->name('manage.import.commit');
         Route::get('/gestion/{slug}/exportar/{scope}', ExportController::class)->name('manage.export');
         Route::delete('/gestion/{slug}/equipo/{memberId}', [TeamController::class, 'remove'])->whereNumber('memberId')->middleware('password.confirm')->name('manage.team.remove');
+        Route::patch('/gestion/{slug}/equipo/{memberId}/almacenes', [TeamController::class, 'scope'])->whereNumber('memberId')->middleware('password.confirm')->name('manage.team.scope');
         Route::get('/gestion/{slug}/vista-previa/{versionId}', [CatalogController::class, 'index'])->whereNumber('versionId')->name('manage.preview');
         Route::get('/gestion/{slug}/operacion/configuracion', [BusinessController::class, 'index'])->defaults('section', 'configuracion')->middleware('password.confirm')->name('manage.configuration');
         Route::get('/gestion/{slug}/operacion/{section?}', [BusinessController::class, 'index'])->name('manage.business');

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Form, Head } from '@inertiajs/vue3';
+import { Form, Head, router } from '@inertiajs/vue3';
 import SecurityController from '@/actions/App/Http/Controllers/Settings/SecurityController';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -7,20 +7,17 @@ import PasswordInput from '@/components/PasswordInput.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { edit } from '@/routes/security';
-/* @chisel-passkeys */
 import type { Props as ManagePasskeysProps } from '@/components/ManagePasskeys.vue';
 import ManagePasskeys from '@/components/ManagePasskeys.vue';
-/* @end-chisel-passkeys */
-/* @chisel-2fa */
 import type { Props as ManageTwoFactorProps } from '@/components/ManageTwoFactor.vue';
 import ManageTwoFactor from '@/components/ManageTwoFactor.vue';
-/* @end-chisel-2fa */
 
 // oxfmt-ignore
 type Props = {
     passwordRules: string;
-} /* @chisel-passkeys */ & ManagePasskeysProps /* @end-chisel-passkeys */ /* @chisel-2fa */ &
-    ManageTwoFactorProps; /* @end-chisel-2fa */
+    sessions: { key: string; agent: string; last_activity: number; current: boolean }[];
+} & ManagePasskeysProps &
+    ManageTwoFactorProps;
 
 const props = defineProps<Props>();
 
@@ -40,6 +37,41 @@ defineOptions({
     <Head title="Seguridad de la cuenta" />
 
     <h1 class="sr-only">Seguridad de la cuenta</h1>
+    <section
+        v-if="props.sessions.length"
+        class="mb-8 space-y-4 rounded-xl border p-5"
+    >
+        <h2 class="text-lg font-semibold">Sesiones de tu cuenta</h2>
+        <article
+            v-for="session in props.sessions"
+            :key="session.key"
+            class="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-sm"
+        >
+            <div>
+                <p class="max-w-sm break-words">{{ session.agent }}</p>
+                <p class="text-muted-foreground">
+                    {{
+                        new Date(session.last_activity * 1000).toLocaleString(
+                            'es-PE',
+                        )
+                    }}
+                    · {{ session.current ? 'Esta sesión' : 'Otro acceso' }}
+                </p>
+            </div>
+            <button
+                v-if="!session.current"
+                type="button"
+                class="text-red-700"
+                @click="
+                    router.delete(`/settings/sessions/${session.key}`, {
+                        preserveScroll: true,
+                    })
+                "
+            >
+                Cerrar sesión
+            </button>
+        </article>
+    </section>
 
     <div class="space-y-6">
         <Heading
@@ -111,18 +143,14 @@ defineOptions({
         </Form>
     </div>
 
-    <!-- @chisel-2fa -->
     <ManageTwoFactor
         :canManageTwoFactor="canManageTwoFactor"
         :requiresConfirmation="requiresConfirmation"
         :twoFactorEnabled="twoFactorEnabled"
     />
-    <!-- @end-chisel-2fa -->
 
-    <!-- @chisel-passkeys -->
     <ManagePasskeys
         :canManagePasskeys="canManagePasskeys"
         :passkeys="passkeys"
     />
-    <!-- @end-chisel-passkeys -->
 </template>

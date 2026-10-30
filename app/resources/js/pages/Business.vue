@@ -2,6 +2,10 @@
 import { computed, reactive, ref } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import BusinessShell from '@/components/BusinessShell.vue';
+import ProductSearch from '@/components/ProductSearch.vue';
+import OperationalOptions from '@/components/OperationalOptions.vue';
+import BusinessAdministration from '@/components/BusinessAdministration.vue';
+import PurchaseDocumentForm from '@/components/PurchaseDocumentForm.vue';
 import InvitationList, {
     type Invitation,
 } from '@/components/InvitationList.vue';
@@ -9,7 +13,13 @@ import { money, minor, state, localDate } from '@/lib/commerce';
 
 type Row = Record<string, string | number | boolean | null>;
 type Warehouse = { id: number; name: string; branch: string };
-type Product = { id: number; name: string; sku: string; price_minor: number };
+type Product = {
+    id: number;
+    name: string;
+    sku: string;
+    barcode?: string;
+    price_minor: number;
+};
 type Field = {
     name: string;
     label: string;
@@ -52,8 +62,53 @@ const errors = ref<Record<string, string>>({});
 const active = ref('');
 const draft = reactive<Record<string, string>>({});
 const key = ref(crypto.randomUUID());
-const products = computed(() => (props.data.products || []) as Product[]);
-const customers = computed(() => (props.data.customers || []) as Row[]);
+const extraProducts = ref<Product[]>([]);
+const products = computed(() => [
+    ...extraProducts.value,
+    ...((props.data.products || []) as Product[]).filter(
+        (p) => !extraProducts.value.some((e) => e.id === p.id),
+    ),
+]);
+function foundProduct(product: Product) {
+    extraProducts.value = [
+        product,
+        ...extraProducts.value.filter((p) => p.id !== product.id),
+    ];
+    picker.value = String(product.id);
+}
+const customerTerm = ref('');
+const extraCustomers = ref<Row[]>([]);
+const customers = computed(() => [
+    ...extraCustomers.value,
+    ...((props.data.customers || []) as Row[]).filter(
+        (c) => !extraCustomers.value.some((e) => e.id === c.id),
+    ),
+]);
+const historyPages = computed(
+    () =>
+        (props.data.pages || []) as {
+            label: string;
+            links: { url: string | null; label: string; active: boolean }[];
+        }[],
+);
+async function findCustomer() {
+    try {
+        const response = await fetch(
+            `/gestion/${props.tenant.slug}/buscar-clientes?q=${encodeURIComponent(customerTerm.value)}`,
+            { headers: { Accept: 'application/json' } },
+        );
+        if (!response.ok) throw new Error('No se pudo buscar clientes.');
+        extraCustomers.value = (await response.json()) as Row[];
+        if (extraCustomers.value[0]) {
+            sale.customer_id = String(extraCustomers.value[0].id);
+            sale.customer_name = String(extraCustomers.value[0].name);
+            sale.phone = String(extraCustomers.value[0].phone || '');
+        }
+    } catch (error) {
+        errors.value = { operation: (error as Error).message };
+    }
+}
+
 const sessions = computed(() =>
     ((props.data.cashSessions || []) as Row[]).filter((c) => !c.closed_at),
 );
@@ -232,6 +287,24 @@ const actions = computed<Action[]>(() => {
         ],
         caja: [
             {
+                action: 'reopen_cash',
+                label: 'Reabrir caja cerrada',
+                fields: [
+                    field(
+                        'cash_session_id',
+                        'Caja cerrada',
+                        'select',
+                        ((props.data.cashSessions || []) as Row[])
+                            .filter((c) => c.closed_at)
+                            .map((c) => [
+                                Number(c.id),
+                                `Caja ${c.id} · ${localDate(String(c.closed_at))}`,
+                            ]),
+                    ),
+                    reason(),
+                ],
+            },
+            {
                 action: 'expense',
                 label: 'Registrar gasto',
                 fields: [
@@ -330,6 +403,45 @@ const actions = computed<Action[]>(() => {
         ],
         promociones: [
             {
+                action: 'price_rule',
+                label: 'Programar oferta automática',
+                fields: [
+                    field('name', 'Nombre de la oferta'),
+                    field('percent', 'Descuento %', 'number'),
+                    field(
+                        'product_id',
+                        'Variante (opcional)',
+                        'number',
+                        undefined,
+                        true,
+                    ),
+                    field(
+                        'category',
+                        'Categoría exacta (opcional)',
+                        'text',
+                        undefined,
+                        true,
+                    ),
+                    field(
+                        'channel',
+                        'Canal',
+                        'select',
+                        [
+                            ['', 'Ambos'],
+                            ['web', 'Tienda'],
+                            ['pos', 'POS'],
+                        ],
+                        true,
+                    ),
+                    field(
+                        'starts_at',
+                        'Desde (hora de Lima)',
+                        'datetime-local',
+                    ),
+                    field('ends_at', 'Hasta (hora de Lima)', 'datetime-local'),
+                ],
+            },
+            {
                 action: 'coupon',
                 label: 'Crear cupón',
                 fields: [
@@ -385,6 +497,46 @@ const actions = computed<Action[]>(() => {
             },
         ],
         configuracion: [
+            {
+                action: 'delivery_zone',
+                label: 'Crear zona o punto de recojo',
+                fields: [
+                    field('name', 'Distrito / nombre del punto'),
+                    field('method', 'Método', 'select', [
+                        ['pickup', 'Recojo'],
+                        ['delivery', 'Delivery'],
+                        ['courier', 'Courier'],
+                        ['shipping', 'Envío nacional'],
+                    ]),
+                    field(
+                        'address',
+                        'Dirección del punto o zona',
+                        'text',
+                        undefined,
+                        true,
+                    ),
+                    field('fee_minor', 'Tarifa S/', 'amount'),
+                ],
+            },
+            {
+                action: 'delivery_slot',
+                label: 'Crear franja de atención',
+                fields: [
+                    field('method', 'Método', 'select', [
+                        ['pickup', 'Recojo'],
+                        ['delivery', 'Delivery'],
+                        ['courier', 'Courier'],
+                        ['shipping', 'Envío nacional'],
+                    ]),
+                    field(
+                        'starts_at',
+                        'Desde (hora de Lima)',
+                        'datetime-local',
+                    ),
+                    field('ends_at', 'Hasta (hora de Lima)', 'datetime-local'),
+                    field('capacity', 'Cupos máximos', 'number'),
+                ],
+            },
             {
                 action: 'settings',
                 label: 'Editar mi tienda',
@@ -447,6 +599,7 @@ const actions = computed<Action[]>(() => {
                 'customer_credit',
                 'stock_count',
                 'expense',
+                'reopen_cash',
             ].includes(a.action),
     );
 });
@@ -489,6 +642,10 @@ function send(action: string, data: Record<string, unknown>) {
                 if (action === 'pos_sale') {
                     cart.value = [];
                     sale.cash = '';
+                    sale.received = '';
+                    sale.digital = '';
+                    sale.reference = '';
+                    sale.digital_confirmed = false;
                     sale.customer_id = '';
                     sale.customer_name = '';
                     sale.phone = '';
@@ -533,6 +690,11 @@ const sale = reactive({
     customer_name: '',
     phone: '',
     cash: '',
+    received: '',
+    digital_method: 'yape',
+    digital: '',
+    reference: '',
+    digital_confirmed: false,
     coupon: '',
 });
 function add() {
@@ -553,6 +715,12 @@ const subtotal = computed(() =>
     ),
 );
 function sell() {
+    if (sale.digital && !sale.digital_confirmed) {
+        errors.value = {
+            operation: 'Confirma que verificaste el pago digital en tu cuenta.',
+        };
+        return;
+    }
     try {
         send('pos_sale', {
             warehouse_id: sale.warehouse_id,
@@ -563,6 +731,16 @@ function sell() {
             delivery_method: 'pickup',
             items: cart.value,
             cash_minor: minor(sale.cash || '0'),
+            cash_received_minor: minor(sale.received || sale.cash || '0'),
+            payments: sale.digital
+                ? [
+                      {
+                          method: sale.digital_method,
+                          amount_minor: minor(sale.digital),
+                          reference: sale.reference,
+                      },
+                  ]
+                : [],
             coupon: sale.coupon || null,
         });
     } catch (e) {
@@ -612,6 +790,18 @@ const reportCards = [
         :role="role"
         :section="section"
     >
+        <BusinessAdministration
+            v-if="section === 'configuracion'"
+            :tenant="tenant"
+            :warehouses="warehouses"
+            :data="data"
+        />
+        <ProductSearch
+            v-if="['pos', 'inventario', 'compras'].includes(section)"
+            :slug="tenant.slug"
+            @selected="foundProduct"
+        />
+        <OperationalOptions :tenant="tenant" :data="data" :section="section" />
         <p class="mb-2 text-xs font-semibold tracking-widest text-emerald-700">
             GESTIÓN EMPRESARIAL
         </p>
@@ -831,6 +1021,19 @@ const reportCards = [
                     <h2 class="text-lg font-semibold">
                         Cobrar o registrar crédito
                     </h2>
+                    <div class="grid gap-2">
+                        <label
+                            >Buscar cliente por nombre, teléfono o correo<input
+                                v-model="customerTerm"
+                                class="mt-2 w-full rounded-xl border p-3" /></label
+                        ><button
+                            type="button"
+                            class="text-left text-emerald-800"
+                            @click="findCustomer"
+                        >
+                            Buscar cliente en todo el negocio
+                        </button>
+                    </div>
                     <label class="grid gap-2 text-sm"
                         >Almacén<select
                             v-model="sale.warehouse_id"
@@ -912,8 +1115,53 @@ const reportCards = [
                     ><label class="grid gap-2 text-sm"
                         >Cupón (opcional)<input
                             v-model="sale.coupon"
-                            class="rounded-xl border p-3" /></label
-                    ><button
+                            class="rounded-xl border p-3"
+                    /></label>
+                    <label class="grid gap-2 text-sm"
+                        >Efectivo recibido S/<input
+                            v-model="sale.received"
+                            inputmode="decimal"
+                            placeholder="Igual al aplicado si se deja vacío"
+                            class="rounded-xl border p-3"
+                    /></label>
+                    <fieldset
+                        v-if="role === 'owner'"
+                        class="grid gap-3 rounded-xl border p-4"
+                    >
+                        <legend class="px-2 font-medium">
+                            Pago mixto verificado (opcional)
+                        </legend>
+                        <select
+                            v-model="sale.digital_method"
+                            aria-label="Medio digital"
+                            class="rounded-lg border p-3"
+                        >
+                            <option value="yape">Yape</option>
+                            <option value="bcp">BCP / transferencia</option>
+                        </select>
+                        <label
+                            >Importe digital S/<input
+                                v-model="sale.digital"
+                                inputmode="decimal"
+                                class="mt-2 w-full rounded-lg border p-3"
+                        /></label>
+                        <label
+                            >Referencia<input
+                                v-model="sale.reference"
+                                :required="!!sale.digital"
+                                maxlength="120"
+                                class="mt-2 w-full rounded-lg border p-3"
+                        /></label>
+                        <label
+                            ><input
+                                v-model="sale.digital_confirmed"
+                                type="checkbox"
+                            />
+                            Verifiqué este ingreso en la cuenta del
+                            negocio.</label
+                        >
+                    </fieldset>
+                    <button
                         :disabled="busy || !cart.length"
                         class="rounded-xl bg-emerald-800 p-4 font-semibold text-white disabled:opacity-50"
                     >
@@ -927,8 +1175,9 @@ const reportCards = [
                 </form>
             </div>
             <p class="mt-5 text-sm text-slate-500">
-                Solo se verifica efectivo en esta pantalla. Los pagos Yape/BCP
-                se registran y revisan desde el detalle de la venta.
+                El cajero registra efectivo y crédito. El propietario también
+                puede registrar un pago mixto después de verificar el ingreso
+                digital. Una captura no confirma el pago.
             </p></template
         >
 
@@ -1061,6 +1310,12 @@ const reportCards = [
         >
 
         <template v-if="section === 'compras'">
+            <PurchaseDocumentForm
+                :tenant="tenant"
+                :products="products"
+                :warehouses="warehouses"
+                :suppliers="rows('suppliers')"
+            />
             <p class="mb-5 text-sm text-slate-600">
                 Cada borrador corresponde a una variante. El costo unitario
                 incluye costos gerenciales asignados por el responsable; no
@@ -1372,5 +1627,32 @@ const reportCards = [
                 </div>
             </div></template
         >
+        <nav
+            v-for="history in historyPages"
+            :key="history.label"
+            :aria-label="`Paginación de ${history.label}`"
+            class="mt-8 flex flex-wrap items-center gap-3"
+        >
+            <strong class="mr-3 text-sm">{{ history.label }}</strong>
+            <template v-for="(link, index) in history.links" :key="index"
+                ><Link
+                    v-if="link.url"
+                    :href="link.url"
+                    :class="[
+                        'rounded-lg border px-3 py-2 text-sm',
+                        link.active
+                            ? 'bg-emerald-800 text-white'
+                            : 'bg-white text-emerald-900',
+                    ]"
+                    >{{
+                        index === 0
+                            ? 'Anterior'
+                            : index === history.links.length - 1
+                              ? 'Siguiente'
+                              : link.label
+                    }}</Link
+                ></template
+            >
+        </nav>
     </BusinessShell>
 </template>

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\PasswordUpdateRequest;
 use App\Http\Requests\Settings\TwoFactorAuthenticationRequest;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,10 +21,10 @@ class SecurityController extends Controller
     public function edit(TwoFactorAuthenticationRequest $request): Response
     {
         $props = [
-            /* @chisel-2fa */
+            'sessions' => config('session.driver') === 'database'
+                ? DB::table('sessions')->where('user_id', $request->user()->id)->orderByDesc('last_activity')->limit(100)->get(['id', 'user_agent', 'last_activity'])->map(fn ($session) => ['key' => hash_hmac('sha256', $session->id, config('app.key')), 'agent' => mb_substr($session->user_agent ?? 'Navegador', 0, 160), 'last_activity' => $session->last_activity, 'current' => hash_equals($request->session()->getId(), $session->id)])->all()
+                : [],
             'canManageTwoFactor' => Features::canManageTwoFactorAuthentication(),
-            /* @end-chisel-2fa */
-            /* @chisel-passkeys */
             'canManagePasskeys' => Features::canManagePasskeys(),
             'passkeys' => Features::canManagePasskeys()
                 ? $request->user()
@@ -40,18 +42,15 @@ class SecurityController extends Controller
                     ->values()
                     ->all()
                 : [],
-            /* @end-chisel-passkeys */
             'passwordRules' => Password::defaults()->toPasswordRulesString(),
         ];
 
-        /* @chisel-2fa */
         if (Features::canManageTwoFactorAuthentication()) {
             $request->ensureStateIsValid();
 
             $props['twoFactorEnabled'] = $request->user()->hasEnabledTwoFactorAuthentication();
             $props['requiresConfirmation'] = Features::optionEnabled(Features::twoFactorAuthentication(), 'confirm');
         }
-        /* @end-chisel-2fa */
 
         return Inertia::render('settings/Security', $props);
     }
@@ -68,5 +67,16 @@ class SecurityController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Password updated.')]);
 
         return back();
+    }
+
+    public function revokeSession(Request $request, string $key): RedirectResponse
+    {
+        abort_unless(config('session.driver') === 'database', 404);
+        $sessions = DB::table('sessions')->where('user_id', $request->user()->id)->get(['id']);
+        $session = $sessions->first(fn ($session) => hash_equals(hash_hmac('sha256', $session->id, config('app.key')), $key));
+        abort_unless($session !== null && ! hash_equals($request->session()->getId(), $session->id), 404);
+        DB::table('sessions')->where('user_id', $request->user()->id)->where('id', $session->id)->delete();
+
+        return back()->with('success', 'Sesión cerrada.');
     }
 }

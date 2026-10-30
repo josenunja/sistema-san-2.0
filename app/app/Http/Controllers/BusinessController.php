@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\BusinessLimits;
 use App\Services\Commerce;
 use App\Services\Invitations;
 use App\Services\Purchasing;
+use App\Services\ScheduledPrices;
+use App\Services\WarehouseAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -35,22 +38,33 @@ class BusinessController extends Controller
         $this->allowed($request, $section);
         $tenant = $request->attributes->get('tenant');
         $id = (int) $tenant->id;
+        $warehouseIds = app(WarehouseAccess::class)->ids($id);
         $data = [];
+        $pages = [];
         if (in_array($section, ['inventario', 'compras', 'pos'], true)) {
-            $data['products'] = DB::table('products')->where('tenant_id', $id)->orderBy('name')->limit(500)->get(['id', 'name', 'sku', 'price_minor']);
-            $data['stock'] = DB::table('stock_positions')->where('tenant_id', $id)->get();
+            $data['products'] = DB::table('products')->where('tenant_id', $id)->where('archived', false)->orderBy('name')->limit(500)->get(['id', 'name', 'sku', 'barcode', 'price_minor', 'minimum_stock', 'category']);
+            if ($section === 'pos') {
+                app(ScheduledPrices::class)->decorate($id, $data['products'], 'pos');
+            }
+            $data['stock'] = DB::table('stock_positions')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))->get();
         }
         if ($section === 'inventario') {
-            $data['movements'] = DB::table('stock_movements')->where('tenant_id', $id)->orderByDesc('id')->limit(100)->get();
-            $data['transfers'] = DB::table('transfers')->where('tenant_id', $id)->whereRaw('received + damaged < quantity')->orderBy('id')->get();
+            $movementPage = DB::table('stock_movements')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))->orderByDesc('id')->paginate(50, ['*'], 'movement_page')->withQueryString();
+            $data['movements'] = $movementPage->getCollection();
+            $pages[] = ['label' => 'Movimientos', 'links' => $movementPage->linkCollection()];
+            $data['transfers'] = DB::table('transfers')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('source_id', $warehouseIds)->whereIn('destination_id', $warehouseIds))->whereRaw('received + damaged < quantity')->orderBy('id')->get();
         }
         if ($section === 'compras') {
             $data['suppliers'] = DB::table('suppliers')->where('tenant_id', $id)->orderBy('name')->get();
-            $data['purchases'] = DB::table('purchases')->where('tenant_id', $id)->orderByDesc('id')->limit(200)->get();
-            $data['purchaseReceipts'] = DB::table('purchase_receipts')->where('tenant_id', $id)->orderByDesc('id')->limit(200)->get();
+            $purchasePage = DB::table('purchases')->where('tenant_id', $id)->orderByDesc('id')->paginate(25, ['*'], 'purchase_page')->withQueryString();
+            $data['purchases'] = $purchasePage->getCollection();
+            $pages[] = ['label' => 'Compras', 'links' => $purchasePage->linkCollection()];
+            $receiptPage = DB::table('purchase_receipts')->where('tenant_id', $id)->orderByDesc('id')->paginate(25, ['*'], 'receipt_page')->withQueryString();
+            $data['purchaseReceipts'] = $receiptPage->getCollection();
+            $pages[] = ['label' => 'Recepciones', 'links' => $receiptPage->linkCollection()];
         }
         if ($section === 'pedidos') {
-            $data['orders'] = DB::table('orders')->where('tenant_id', $id)->orderByDesc('created_at')->paginate(25)->withQueryString();
+            $data['orders'] = DB::table('orders')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))->orderByDesc('created_at')->paginate(25)->withQueryString();
         }
         if (in_array($section, ['pos', 'caja'], true)) {
             $data['cashSessions'] = DB::table('cash_sessions')->where('tenant_id', $id)->where('user_id', $request->user()->id)->orderByDesc('id')->limit(30)->get()->map(function ($cash) use ($id) {
@@ -66,7 +80,14 @@ class BusinessController extends Controller
         if ($section === 'clientes') {
             $paid = DB::table('payments')->where('tenant_id', $id)->where('status', 'verified')->groupBy('order_id')->selectRaw('order_id, sum(amount_minor) as paid_minor');
             $history = DB::table('orders')->leftJoinSub($paid, 'paid', 'paid.order_id', '=', 'orders.id')->where('orders.tenant_id', $id)->where('orders.status', 'confirmed')->whereNotNull('customer_id')->groupBy('customer_id')->selectRaw('customer_id, count(*) as purchases_count, max(orders.created_at) as last_purchase_at, sum(total_minor-returned_minor) as spent_minor, sum(greatest(0,total_minor-returned_minor-coalesce(paid.paid_minor,0))) as debt_minor');
-            $data['customers'] = DB::table('customers')->leftJoinSub($history, 'history', 'history.customer_id', '=', 'customers.id')->where('customers.tenant_id', $id)->orderBy('customers.name')->limit(500)->get(['customers.*', 'history.purchases_count', 'history.last_purchase_at', 'history.spent_minor', 'history.debt_minor']);
+            $customerPage = DB::table('customers')->leftJoinSub($history, 'history', 'history.customer_id', '=', 'customers.id')->where('customers.tenant_id', $id)->when($request->filled('clientq'), fn ($q) => $q->where('customers.name', 'ilike', '%'.mb_substr((string) $request->query('clientq'), 0, 100).'%'))->orderBy('customers.name')->paginate(25, ['customers.*', 'history.purchases_count', 'history.last_purchase_at', 'history.spent_minor', 'history.debt_minor'], 'customer_page')->withQueryString();
+            $data['customers'] = $customerPage->getCollection();
+            $pages[] = ['label' => 'Clientes', 'links' => $customerPage->linkCollection()];
+        }
+        if (in_array($section, ['promociones', 'configuracion'], true)) {
+            $data['priceRules'] = DB::table('price_rules')->where('tenant_id', $id)->orderByDesc('id')->get();
+            $data['zones'] = DB::table('delivery_zones')->where('tenant_id', $id)->orderBy('name')->get();
+            $data['slots'] = DB::table('delivery_slots')->where('tenant_id', $id)->orderByDesc('starts_at')->limit(100)->get();
         }
         if ($section === 'promociones') {
             $data['coupons'] = DB::table('coupons')->where('tenant_id', $id)->orderByDesc('id')->get();
@@ -75,16 +96,20 @@ class BusinessController extends Controller
             $data['audit'] = DB::table('audit_entries')->where('tenant_id', $id)->orderByDesc('id')->paginate(50);
         }
         if ($section === 'configuracion') {
+            $data['limits'] = app(BusinessLimits::class)->usage($id);
+            $data['singleBusiness'] = (bool) config('business.single');
             $data['settings'] = json_decode($tenant->settings, true) ?: [];
             $data['versions'] = DB::table('storefront_versions')->where('tenant_id', $id)->orderByDesc('id')->limit(30)->get(['id', 'published_at', 'created_at']);
-            $data['members'] = DB::table('memberships')->join('users', 'users.id', '=', 'memberships.user_id')->where('memberships.tenant_id', $id)->get(['users.id', 'users.name', 'users.email', 'memberships.role']);
+            $data['members'] = DB::table('memberships')->join('users', 'users.id', '=', 'memberships.user_id')->where('memberships.tenant_id', $id)->get(['users.id', 'users.name', 'users.email', 'memberships.role', 'memberships.warehouse_ids']);
             $data['invitations'] = app(Invitations::class)->listing($id);
         }
         if ($section === 'resumen') {
             $data['report'] = $this->report($id, $request);
         }
 
-        return Inertia::render('Business', ['tenant' => ['id' => $tenant->id, 'name' => $tenant->name, 'slug' => $slug], 'section' => $section, 'role' => $request->attributes->get('membership')->role, 'warehouses' => DB::table('warehouses')->where('tenant_id', $id)->orderBy('name')->get(), 'data' => $data]);
+        $data['pages'] = $pages;
+
+        return Inertia::render('Business', ['tenant' => ['id' => $tenant->id, 'name' => $tenant->name, 'slug' => $slug], 'section' => $section, 'role' => $request->attributes->get('membership')->role, 'warehouses' => DB::table('warehouses')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('id', $warehouseIds))->orderBy('name')->get(), 'data' => $data]);
     }
 
     /**
@@ -123,6 +148,12 @@ class BusinessController extends Controller
         $this->allowed($request, $action);
         $tenant = (int) $request->attributes->get('tenant')->id;
         $rules = match ($action) {
+            'price_rule' => ['name' => 'required|string|max:120', 'percent' => 'required|integer|min:1|max:100', 'product_id' => 'nullable|integer', 'category' => 'nullable|string|max:100', 'channel' => ['nullable', Rule::in(['web', 'pos'])], 'starts_at' => 'required|date', 'ends_at' => 'required|date|after:starts_at'],
+            'delivery_zone' => ['name' => 'required|string|max:120', 'method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])], 'address' => 'nullable|string|max:300', 'fee_minor' => 'required|integer|min:0|max:999999999'],
+            'delivery_slot' => ['method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])], 'starts_at' => 'required|date', 'ends_at' => 'required|date|after:starts_at', 'capacity' => 'required|integer|min:1|max:10000'],
+            'toggle_option' => ['kind' => ['required', Rule::in(['price_rules', 'delivery_zones', 'delivery_slots'])], 'id' => 'required|integer', 'enabled' => 'required|boolean'],
+            'purchase_document' => ['supplier_id' => 'required|integer', 'warehouse_id' => 'required|integer', 'reference' => 'required|string|max:120', 'additional_minor' => 'required|integer|min:0|max:999999999', 'discount_minor' => 'required|integer|min:0|max:999999999', 'lines' => 'required|array|min:1|max:100', 'lines.*.product_id' => 'required|integer|distinct', 'lines.*.quantity' => 'required|integer|min:1|max:1000000', 'lines.*.unit_cost_minor' => 'required|integer|min:0|max:999999999'],
+            'reopen_cash' => ['cash_session_id' => 'required|integer', 'reason' => 'required|string|min:5|max:300'],
             'warehouse' => ['name' => 'required|string|max:120', 'branch' => 'required|string|max:120'],
             'receipt' => ['warehouse_id' => 'required|integer', 'product_id' => 'required|integer', 'quantity' => 'required|integer|min:1|max:1000000', 'unit_cost_minor' => 'required|integer|min:0|max:999999999', 'supplier' => 'required|string|max:160', 'reference' => 'required|string|max:120'],
             'transfer' => ['source_id' => 'required|integer', 'destination_id' => 'required|integer', 'product_id' => 'required|integer', 'quantity' => 'required|integer|min:1|max:1000000'],
@@ -154,11 +185,14 @@ class BusinessController extends Controller
             default => abort(404),
         };
         $data = $request->validate($rules);
-        if (in_array($action, ['settings', 'restore_settings', 'refund'], true)) {
+        if (in_array($action, ['settings', 'restore_settings', 'refund', 'reopen_cash'], true)) {
             abort_unless($request->session()->has('auth.password_confirmed_at') && time() - $request->session()->get('auth.password_confirmed_at') < 10800, 403, 'Confirma nuevamente tu contraseña en configuración de seguridad.');
         }
         $result = $commerce->run($tenant, $base['key'], $action, ['actor' => $request->user()->id, ...$data], function () use ($tenant, $action, $data, $commerce, $request) {
             return match ($action) {
+                'price_rule', 'delivery_zone', 'delivery_slot', 'toggle_option' => $this->option($tenant, $action, $data),
+                'purchase_document' => app(Purchasing::class)->execute($tenant, $action, $data),
+                'reopen_cash' => $this->reopenCash($tenant, $data, $commerce),
                 'supplier', 'purchase', 'purchase_confirm', 'purchase_close', 'purchase_receive', 'purchase_reverse' => app(Purchasing::class)->execute($tenant, $action, $data),
                 'warehouse' => $this->warehouse($tenant, $data, $commerce),
                 'receipt' => $commerce->receive($tenant, $data),
@@ -192,7 +226,7 @@ class BusinessController extends Controller
     /** @return array<string, mixed> */
     public static function orderRules(): array
     {
-        return ['warehouse_id' => 'required|integer', 'customer_id' => 'nullable|integer', 'customer_name' => 'required|string|max:160', 'phone' => 'required|string|max:30', 'email' => 'nullable|email|max:254', 'address' => 'nullable|string|max:1000', 'delivery_method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])], 'coupon' => 'nullable|string|max:40', 'cash_session_id' => 'nullable|integer', 'cash_minor' => 'nullable|integer|min:0|max:999999999', 'items' => 'required|array|min:1|max:100', 'items.*.product_id' => 'required|integer', 'items.*.quantity' => 'required|integer|min:1|max:10000'];
+        return ['warehouse_id' => 'required|integer', 'customer_id' => 'nullable|integer', 'customer_name' => 'required|string|max:160', 'phone' => 'required|string|max:30', 'email' => 'nullable|email|max:254', 'address' => 'nullable|string|max:1000', 'delivery_method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])], 'coupon' => 'nullable|string|max:40', 'cash_session_id' => 'nullable|integer', 'delivery_zone_id' => 'nullable|integer', 'delivery_slot_id' => 'nullable|integer', 'cash_minor' => 'nullable|integer|min:0|max:999999999', 'cash_received_minor' => 'nullable|integer|min:0|max:999999999', 'payments' => 'sometimes|array|max:10', 'payments.*.method' => ['required', Rule::in(['yape', 'bcp'])], 'payments.*.amount_minor' => 'required|integer|min:1|max:999999999', 'payments.*.reference' => 'required|string|max:120', 'items' => 'required|array|min:1|max:100', 'items.*.product_id' => 'required|integer', 'items.*.quantity' => 'required|integer|min:1|max:10000'];
     }
 
     /**
@@ -216,8 +250,7 @@ class BusinessController extends Controller
      */
     private function warehouse(int $tenant, array $data, Commerce $commerce): array
     {
-        $plan = DB::table('tenants')->where('id', $tenant)->value('plan');
-        if (DB::table('warehouses')->where('tenant_id', $tenant)->count() >= DB::table('plans')->where('slug', $plan)->value('warehouse_limit')) {
+        if (DB::table('warehouses')->where('tenant_id', $tenant)->count() >= app(BusinessLimits::class)->limit($tenant, 'warehouse')) {
             $commerce->fail('Se alcanzó el límite de almacenes del plan.');
         }
         if (DB::table('warehouses')->where('tenant_id', $tenant)->where('name', $data['name'])->exists()) {
@@ -259,6 +292,36 @@ class BusinessController extends Controller
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
+    private function option(int $tenant, string $action, array $data): array
+    {
+        if ($action === 'toggle_option') {
+            $query = DB::table($data['kind'])->where('tenant_id', $tenant)->where('id', $data['id']);
+            abort_unless((clone $query)->exists(), 404);
+            $query->update(['enabled' => $data['enabled']]);
+
+            return ['id' => $data['id']];
+        }
+        if (! empty($data['product_id'])) {
+            abort_unless(DB::table('products')->where('tenant_id', $tenant)->where('id', $data['product_id'])->exists(), 404);
+        }
+        foreach (['starts_at', 'ends_at'] as $field) {
+            if (isset($data[$field])) {
+                $data[$field] = Carbon::parse($data[$field], 'America/Lima')->utc();
+            }
+        }
+        if ($action === 'delivery_zone') {
+            $data['address'] ??= '';
+        }
+        $table = match ($action) {
+            'price_rule' => 'price_rules', 'delivery_zone' => 'delivery_zones', default => 'delivery_slots'
+        };
+
+        return ['id' => DB::table($table)->insertGetId(['tenant_id' => $tenant, ...$data])];
+    }
+
+    /** @param array<string,mixed> $data
+     * @return array<string,mixed>
+     */
     private function coupon(int $tenant, array $data): array
     {
         if (! empty($data['product_id'])) {
@@ -280,7 +343,7 @@ class BusinessController extends Controller
      */
     private function openCash(int $tenant, array $data, Request $request, Commerce $commerce): array
     {
-        abort_unless(DB::table('warehouses')->where('tenant_id', $tenant)->where('id', $data['warehouse_id'])->exists(), 404);
+        app(WarehouseAccess::class)->check($tenant, (int) $data['warehouse_id']);
         if (DB::table('cash_sessions')->where('tenant_id', $tenant)->where('user_id', $request->user()->id)->whereNull('closed_at')->exists()) {
             $commerce->fail('Ya tienes una caja abierta.');
         }
@@ -306,6 +369,25 @@ class BusinessController extends Controller
     /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
+     */
+    private function reopenCash(int $tenant, array $data, Commerce $commerce): array
+    {
+        $cash = DB::table('cash_sessions')->where('tenant_id', $tenant)->where('id', $data['cash_session_id'])->lockForUpdate()->first();
+        abort_unless($cash !== null, 404);
+        if ($cash->closed_at === null) {
+            $commerce->fail('La caja ya está abierta.');
+        }
+        if (DB::table('cash_sessions')->where('tenant_id', $tenant)->where('user_id', $cash->user_id)->whereNull('closed_at')->exists()) {
+            $commerce->fail('Ese usuario ya tiene otra caja abierta.');
+        }
+        DB::table('cash_reopenings')->insert(['tenant_id' => $tenant, 'cash_session_id' => $cash->id, 'actor_id' => auth()->id(), 'reason' => $data['reason'], 'previous_closed_at' => $cash->closed_at, 'previous_counted_minor' => $cash->counted_minor]);
+        DB::table('cash_sessions')->where('tenant_id', $tenant)->where('id', $cash->id)->update(['closed_at' => null, 'counted_minor' => null]);
+
+        return ['id' => $cash->id];
+    }
+
+    /** @param array<string,mixed> $data
+     * @return array<string,mixed>
      */
     private function cashMovement(int $tenant, array $data, Commerce $commerce): array
     {

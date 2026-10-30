@@ -1,5 +1,7 @@
 # SAS SAN
 
+Entrega comercial local actualizada el 30/10/2026. Incluye pago mixto verificado por el propietario, vuelto, reapertura auditada de caja, compras multilínea, permisos por almacén, gestión de fotos/archivo/códigos de barras, ofertas programadas y zonas/franjas de entrega. Ver [entrega e instalación](docs/DESPLIEGUE_Y_ENTREGA.md) y [precios propuestos](docs/OFERTA_COMERCIAL.md). La modalidad alojada requiere contratar y validar servidor, dominio, correo y respaldo externo; SUNAT continúa desactivada.
+
 Sistema reutilizable en español para catálogo, inventario, compras, pedidos, POS, caja y crédito. Cada copia nueva se configura para una sola empresa: ropa, panadería, mecánica u otro negocio. Laravel 13, Vue 3 y PostgreSQL 18.6. La especificación está en docs/ESPECIFICACION_MEJORADA.md; el alcance y sus límites están en docs/PROGRESS.md.
 
 Para preparar una copia independiente, usa `preparar-copia.ps1` con nombre, identificador, rubro y puerto. Consulta [Copias independientes](docs/COPIAS_INDEPENDIENTES.md). Cada copia necesita su propia base, claves y archivos privados; no reutilices `.env`, `.runtime` ni volúmenes de otra empresa. El modo de plataforma anterior permanece disponible solo cuando se configura explícitamente `BUSINESS_MODE=platform`.

@@ -46,6 +46,9 @@ const props = defineProps<{
         returned_minor: number;
         discount_minor: number;
         delivery_minor: number;
+        cash_received_minor?: number;
+        change_minor?: number;
+        delivery_label?: string;
     };
     lines: Line[];
     payments: Payment[];
@@ -275,6 +278,19 @@ function printTicket() {
                     state(order.delivery_status)
                 }}</strong>
             </article>
+        </div>
+        <div
+            v-if="order.delivery_label || Number(order.change_minor) > 0"
+            class="my-5 grid gap-2 rounded-xl border bg-white p-5 text-sm"
+        >
+            <p v-if="order.delivery_label">
+                Entrega / recojo: {{ order.delivery_label }}
+            </p>
+            <p v-if="Number(order.change_minor) > 0">
+                Efectivo recibido:
+                {{ money(Number(order.cash_received_minor)) }} · Vuelto:
+                {{ money(Number(order.change_minor)) }}
+            </p>
         </div>
         <section class="order-status-experience">
             <div class="order-next-step">

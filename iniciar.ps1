@@ -17,7 +17,7 @@ if($Modo -eq 'Docker'){
     Invoke-Checked {docker compose run --rm -e DB_USERNAME=sas_owner app php artisan migrate --force}
     Invoke-Checked {docker compose run --rm -e DB_USERNAME=sas_owner app php artisan platform:runtime}
     if($Compilar -or !(Test-Path -LiteralPath 'public\build\manifest.json')){Invoke-Checked {npm.cmd ci}; Invoke-Checked {npm.cmd run build}}
-    Invoke-Checked {docker compose up -d app}
+    Invoke-Checked {docker compose up -d app scheduler worker}
 }else{
     $runtime=Join-Path $PSScriptRoot '.runtime'
     $php=Join-Path $runtime 'php\php.exe'

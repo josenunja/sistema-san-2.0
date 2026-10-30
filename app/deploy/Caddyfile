@@ -1,0 +1,19 @@
+{
+    email {$TLS_EMAIL}
+}
+{$DOMAIN} {
+    root * /var/www/html/public
+    encode zstd gzip
+    request_body {
+        max_size 8MB
+    }
+    php_fastcgi app:9000
+    file_server
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        -Server
+    }
+    @private path /.env* /.git/* /storage/* /vendor/*
+    respond @private 404
+}

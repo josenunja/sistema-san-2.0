@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\EnvironmentSecret;
+
 return [
 
     /*
@@ -97,7 +99,7 @@ return [
 
     'cipher' => 'AES-256-CBC',
 
-    'key' => env('APP_KEY'),
+    'key' => EnvironmentSecret::value('APP_KEY', env('APP_KEY_FILE'), env('APP_KEY')),
 
     'previous_keys' => [
         ...array_filter(

@@ -26,8 +26,9 @@ class OfflineSales
                 $this->commerce->fail('No repitas productos en la asignación.');
             }
             $seen[$line['product_id']] = true;
-            $product = DB::table('products')->where('tenant_id', $tenant)->where('id', $line['product_id'])->first();
+            $product = DB::table('products')->where('tenant_id', $tenant)->where('id', $line['product_id'])->where('archived', false)->first();
             abort_unless($product !== null, 404);
+            $product->price_minor = app(ScheduledPrices::class)->price($product, app(ScheduledPrices::class)->rules($tenant, 'pos'));
             $this->commerce->move($tenant, $cash->warehouse_id, $product->id, 0, 0, 0, $line['quantity'], 'offline_assign', 'Asignación exclusiva a dispositivo', $id);
             $item = ['product_id' => $product->id, 'quantity' => $line['quantity'], 'unit_minor' => $product->price_minor, 'name' => $product->name, 'sku' => $product->sku];
             DB::table('offline_allocations')->insert(['tenant_id' => $tenant, 'device_id' => $id, ...$item]);

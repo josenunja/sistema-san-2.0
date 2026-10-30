@@ -24,6 +24,9 @@ type Product = {
     price_minor: number;
     compare_at_minor: number | null;
     published: boolean;
+    archived: boolean;
+    barcode: string | null;
+    minimum_stock: number;
     category: string;
     audience: 'women' | 'men' | 'kids' | 'unisex';
     trending: boolean;
@@ -95,6 +98,19 @@ const props = defineProps<{
         email: string;
         address: string;
     } | null;
+    deliveryZones: {
+        id: number;
+        method: string;
+        name: string;
+        address: string;
+        fee_minor: number;
+    }[];
+    deliverySlots: {
+        id: number;
+        method: string;
+        starts_at: string;
+        ends_at: string;
+    }[];
     featuredCoupon: {
         code: string;
         percent: number;
@@ -111,6 +127,9 @@ const form = useForm({
     price_minor: 0,
     compare_at_minor: null as number | null,
     published: false,
+    archived: false,
+    barcode: '',
+    minimum_stock: 0,
     category: '',
     audience: 'unisex' as 'women' | 'men' | 'kids' | 'unisex',
     trending: false,
@@ -132,6 +151,9 @@ function edit(p: Product) {
     form.price_minor = p.price_minor;
     form.compare_at_minor = p.compare_at_minor;
     form.published = p.published;
+    form.archived = p.archived;
+    form.barcode = p.barcode || '';
+    form.minimum_stock = p.minimum_stock;
     form.category = p.category;
     form.audience = p.audience;
     form.trending = p.trending;
@@ -206,6 +228,8 @@ const checkout = useForm({
     coupon: props.featuredCoupon?.code || '',
     items: [] as { product_id: number; quantity: number }[],
     expected_total_minor: 0,
+    delivery_zone_id: '' as string | number,
+    delivery_slot_id: '' as string | number,
 });
 const quote = ref<Record<string, unknown> | null>(null);
 const quoteError = ref('');
@@ -219,7 +243,12 @@ watch(
     { deep: true },
 );
 watch(
-    () => [checkout.coupon, checkout.delivery_method],
+    () => [
+        checkout.coupon,
+        checkout.delivery_method,
+        checkout.delivery_zone_id,
+        checkout.delivery_slot_id,
+    ],
     () => (quote.value = null),
 );
 const count = computed(() => cart.value.reduce((a, l) => a + l.quantity, 0));
@@ -249,6 +278,8 @@ async function review() {
             })),
             coupon: checkout.coupon || null,
             delivery_method: checkout.delivery_method,
+            delivery_zone_id: checkout.delivery_zone_id || null,
+            delivery_slot_id: checkout.delivery_slot_id || null,
         });
     } catch (e) {
         quoteError.value = (e as Error).message;
@@ -619,6 +650,24 @@ const themeEyebrow = computed(() =>
                     </summary>
                     <div class="mt-5 grid gap-4 md:grid-cols-2">
                         <label class="grid gap-2 text-sm"
+                            >Código de barras<input
+                                v-model="form.barcode"
+                                maxlength="64"
+                                class="rounded-xl border p-3"
+                        /></label>
+                        <label class="grid gap-2 text-sm"
+                            >Stock mínimo para alertas<input
+                                v-model.number="form.minimum_stock"
+                                type="number"
+                                min="0"
+                                max="1000000"
+                                class="rounded-xl border p-3"
+                        /></label>
+                        <label class="flex items-center gap-3 text-sm"
+                            ><input v-model="form.archived" type="checkbox" />
+                            Archivar: ocultar e impedir nuevas ventas</label
+                        >
+                        <label class="grid gap-2 text-sm"
                             >Código del producto (opcional)<input
                                 v-model="form.sku"
                                 :required="!!editing"
@@ -958,8 +1007,29 @@ const themeEyebrow = computed(() =>
                             <p class="mt-3 text-xs text-slate-500">
                                 {{ available(p.id) }} unidades disponibles
                             </p>
+                            <p
+                                v-if="
+                                    managing &&
+                                    available(p.id) <= p.minimum_stock &&
+                                    p.minimum_stock > 0
+                                "
+                                class="mt-3 text-sm text-amber-800"
+                            >
+                                Stock bajo · mínimo {{ p.minimum_stock }}
+                            </p>
                             <p v-if="managing" class="mt-3 text-sm">
-                                {{ p.published ? 'Publicado' : 'Borrador' }}
+                                <Link
+                                    :href="`/gestion/${tenant.slug}/productos/${p.id}/fotos`"
+                                    class="mr-4 text-emerald-800"
+                                    >Gestionar fotos</Link
+                                >
+                                {{
+                                    p.archived
+                                        ? 'Archivado'
+                                        : p.published
+                                          ? 'Publicado'
+                                          : 'Borrador'
+                                }}
                                 <a
                                     href="#product-form"
                                     class="ml-4 text-emerald-700"
@@ -1012,6 +1082,76 @@ const themeEyebrow = computed(() =>
                     id="carrito"
                     class="h-fit rounded-2xl border bg-white p-6 xl:sticky xl:top-6"
                 >
+                    <label class="mb-4 grid gap-2 text-sm"
+                        >Método de entrega<select
+                            v-model="checkout.delivery_method"
+                            class="rounded-xl border p-3"
+                        >
+                            <option
+                                v-for="option in deliveryOptions"
+                                :key="option.value"
+                                :value="option.value"
+                            >
+                                {{ option.label }}
+                            </option>
+                        </select></label
+                    >
+                    <label
+                        v-if="
+                            deliveryZones.some(
+                                (z) => z.method === checkout.delivery_method,
+                            )
+                        "
+                        class="grid gap-2 text-sm"
+                        >Zona / punto de recojo<select
+                            v-model="checkout.delivery_zone_id"
+                            required
+                            class="rounded-xl border p-3"
+                        >
+                            <option value="">Seleccionar</option>
+                            <option
+                                v-for="zone in deliveryZones.filter(
+                                    (z) =>
+                                        z.method === checkout.delivery_method,
+                                )"
+                                :key="zone.id"
+                                :value="zone.id"
+                            >
+                                {{ zone.name }} · {{ money(zone.fee_minor) }} ·
+                                {{ zone.address }}
+                            </option>
+                        </select></label
+                    >
+                    <label
+                        v-if="
+                            deliverySlots.some(
+                                (s) => s.method === checkout.delivery_method,
+                            )
+                        "
+                        class="grid gap-2 text-sm"
+                        >Franja de atención (hora de Lima)<select
+                            v-model="checkout.delivery_slot_id"
+                            required
+                            class="rounded-xl border p-3"
+                        >
+                            <option value="">Seleccionar</option>
+                            <option
+                                v-for="slot in deliverySlots.filter(
+                                    (s) =>
+                                        s.method === checkout.delivery_method,
+                                )"
+                                :key="slot.id"
+                                :value="slot.id"
+                            >
+                                {{
+                                    new Date(slot.starts_at).toLocaleString(
+                                        'es-PE',
+                                        { timeZone: 'America/Lima' },
+                                    )
+                                }}
+                            </option>
+                        </select></label
+                    >
                     <h2 class="text-xl font-semibold">
                         Tu carrito
                         <span class="text-slate-400">{{ count }}</span>

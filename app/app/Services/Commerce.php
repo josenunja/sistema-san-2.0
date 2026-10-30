@@ -62,6 +62,7 @@ class Commerce
 
     public function position(int $tenant, int $warehouse, int $product): \stdClass
     {
+        app(WarehouseAccess::class)->check($tenant, $warehouse);
         abort_unless(DB::table('warehouses')->where('tenant_id', $tenant)->where('id', $warehouse)->exists(), 404);
         abort_unless(DB::table('products')->where('tenant_id', $tenant)->where('id', $product)->exists(), 404);
         DB::table('stock_positions')->insertOrIgnore(['tenant_id' => $tenant, 'warehouse_id' => $warehouse, 'product_id' => $product]);
@@ -144,6 +145,7 @@ class Commerce
                 $this->fail('El cupón no está vigente o agotó sus usos.');
             }
         }
+        $scheduledRules = $coupon ? collect() : app(ScheduledPrices::class)->rules($tenant, $public ? 'web' : 'pos');
         $lines = [];
         $subtotal = 0;
         $discount = 0;
@@ -157,12 +159,14 @@ class Commerce
                 $this->fail('Agrupa las unidades de un mismo producto en una línea.');
             }
             $seen[$item['product_id']] = true;
-            $product = DB::table('products')->where('tenant_id', $tenant)->where('id', $item['product_id'])->when($public, fn ($q) => $q->where('published', true))->lockForUpdate()->first();
+            $product = DB::table('products')->where('tenant_id', $tenant)->where('id', $item['product_id'])->when(! array_key_exists($item['product_id'], $authorizedPrices), fn ($q) => $q->where('archived', false))->when($public, fn ($q) => $q->where('published', true))->lockForUpdate()->first();
             if (! $product) {
                 $this->fail('Un producto ya no está disponible en esta tienda.');
             }
             if (array_key_exists($product->id, $authorizedPrices)) {
                 $product->price_minor = $authorizedPrices[$product->id];
+            } else {
+                $product->price_minor = app(ScheduledPrices::class)->price($product, $scheduledRules);
             }
             $base = $product->price_minor * $item['quantity'];
             $applies = $coupon && (! $coupon->category || $coupon->category === $product->category) && (! $coupon->product_id || $coupon->product_id === $product->id);
@@ -219,24 +223,12 @@ class Commerce
                 }
             }
         }
-        $settings = json_decode(DB::table('tenants')->where('id', $tenant)->value('settings'), true) ?: [];
-        $enabledMethods = $settings['delivery_methods'] ?? [
-            'pickup',
-            ...(isset($settings['delivery_minor']) ? ['delivery'] : []),
-        ];
-        if (! in_array($data['delivery_method'], $enabledMethods, true)) {
-            $this->fail('Este método de entrega no está disponible en la tienda.');
-        }
-        $delivery = 0;
-        if ($data['delivery_method'] !== 'pickup') {
-            $feeKey = $data['delivery_method'].'_minor';
-            if (! isset($settings[$feeKey])) {
-                $this->fail('La tienda aún no configuró la tarifa de este método de entrega.');
-            }
-            $delivery = (int) $settings[$feeKey];
-            if (empty($data['address'])) {
-                $this->fail('La entrega requiere dirección.');
-            }
+        $shipping = $pos && $data['delivery_method'] === 'pickup'
+            ? ['fee_minor' => 0, 'zone_id' => null, 'slot_id' => null, 'label' => 'Venta presencial']
+            : app(DeliveryOptions::class)->quote($tenant, $data);
+        $delivery = $shipping['fee_minor'];
+        if ($data['delivery_method'] !== 'pickup' && empty($data['address'])) {
+            $this->fail('La entrega requiere dirección.');
         }
         $customerId = $data['customer_id'] ?? null;
         $customer = null;
@@ -244,10 +236,27 @@ class Commerce
             $customer = DB::table('customers')->where('tenant_id', $tenant)->where('id', $customerId)->lockForUpdate()->first();
             abort_unless($customer !== null, 404);
         }
-        $paid = $pos ? (int) ($data['cash_minor'] ?? 0) : 0;
+        $cashApplied = $pos ? (int) ($data['cash_minor'] ?? 0) : 0;
+        $digital = $pos ? ($data['payments'] ?? []) : [];
+        $digitalTotal = 0;
+        foreach ($digital as $payment) {
+            if (! in_array($payment['method'], ['yape', 'bcp'], true) || $payment['amount_minor'] <= 0 || empty($payment['reference'])) {
+                $this->fail('Cada pago digital requiere medio, importe y referencia.');
+            }
+            $digitalTotal += $payment['amount_minor'];
+        }
+        $paid = $cashApplied;
+        if ($digital && DB::table('memberships')->where('tenant_id', $tenant)->where('user_id', auth()->id())->value('role') !== 'owner') {
+            $this->fail('El propietario debe verificar los pagos digitales antes de registrar esta venta mixta.');
+        }
+        $paid += $digitalTotal;
         $total = $quote['total_minor'] + $delivery;
         if (isset($data['expected_total_minor']) && (int) $data['expected_total_minor'] !== $total) {
             $this->fail('Los precios o descuentos cambiaron. Vuelve a revisar el total antes de confirmar.');
+        }
+        $received = (int) ($data['cash_received_minor'] ?? $cashApplied);
+        if ($pos && ($received < $cashApplied || $received > 999999999)) {
+            $this->fail('El efectivo recibido debe cubrir el efectivo aplicado.');
         }
         if ($paid > $total) {
             $this->fail('El cobro supera el total. Registra solo el efectivo aplicado, descontando el vuelto.');
@@ -264,6 +273,10 @@ class Commerce
         $id = (string) Str::uuid();
         $secret = Str::random(64);
         DB::table('orders')->insert(['id' => $id, 'tenant_id' => $tenant, 'warehouse_id' => $data['warehouse_id'], 'customer_id' => $customerId, 'channel' => $pos ? 'pos' : 'web', 'status' => 'reserved', 'delivery_method' => $data['delivery_method'], 'customer_name' => $data['customer_name'], 'phone' => $data['phone'], 'email' => $data['email'] ?? '', 'address' => $data['address'] ?? '', 'subtotal_minor' => $quote['subtotal_minor'], 'discount_minor' => $quote['discount_minor'], 'delivery_minor' => $delivery, 'total_minor' => $total, 'coupon_id' => $quote['coupon_id'], 'tracking_hash' => hash('sha256', $secret), 'expires_at' => now()->addMinutes(30), 'due_at' => ($pos && $paid < $total && $customer) ? now()->addDays($customer->credit_days) : null]);
+        DB::table('orders')->where('tenant_id', $tenant)->where('id', $id)->update(['delivery_zone_id' => $shipping['zone_id'], 'delivery_slot_id' => $shipping['slot_id'], 'delivery_label' => $shipping['label']]);
+        if ($pos) {
+            DB::table('orders')->where('tenant_id', $tenant)->where('id', $id)->update(['cash_received_minor' => $received, 'change_minor' => $received - $cashApplied]);
+        }
         foreach ($quote['lines'] as $line) {
             DB::table('order_lines')->insert(['tenant_id' => $tenant, 'order_id' => $id, ...$line]);
             $this->move($tenant, $data['warehouse_id'], $line['product_id'], 0, $line['quantity'], 0, 0, 'reserve', 'Reserva de pedido', $id);
@@ -285,8 +298,11 @@ class Commerce
                 $this->fail('La caja pertenece a otro almacén.');
             }
             $this->confirm($tenant, $id, true);
-            if ($paid > 0) {
-                $this->pay($tenant, ['order_id' => $id, 'amount_minor' => $paid, 'method' => 'cash', 'cash_session_id' => $cash->id, 'reference' => null], true);
+            if ($cashApplied > 0) {
+                $this->pay($tenant, ['order_id' => $id, 'amount_minor' => $cashApplied, 'method' => 'cash', 'cash_session_id' => $cash->id, 'reference' => null], true);
+            }
+            foreach ($digital as $payment) {
+                $this->pay($tenant, ['order_id' => $id, ...$payment], true);
             }
         }
 
@@ -297,6 +313,7 @@ class Commerce
     {
         $order = DB::table('orders')->where('tenant_id', $tenant)->where('id', $id)->lockForUpdate()->first();
         abort_unless($order !== null, 404);
+        app(WarehouseAccess::class)->check($tenant, (int) $order->warehouse_id);
 
         return $order;
     }
@@ -384,6 +401,7 @@ class Commerce
         if (! $cash) {
             $this->fail('No tienes una caja abierta autorizada para esta operación.');
         }
+        app(WarehouseAccess::class)->check($tenant, (int) $cash->warehouse_id);
 
         return $cash;
     }

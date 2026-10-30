@@ -78,7 +78,8 @@ class InstallFeaturesCommand extends Command
             return false;
         }
 
-        return $this->installerFlag('LARAVEL_INSTALLER_DEFER_HOOKS');
+        // This is an installed business application, not a starter to rewrite on dependency updates.
+        return true;
     }
 
     protected function shouldSkipNode(): bool

@@ -13,6 +13,9 @@ class Purchasing
      */
     public function execute(int $tenant, string $action, array $data): array
     {
+        if ($action === 'purchase_document') {
+            return $this->document($tenant, $data);
+        }
         if ($action === 'supplier') {
             return ['id' => DB::table('suppliers')->insertGetId(['tenant_id' => $tenant, ...$data])];
         }
@@ -63,5 +66,46 @@ class Purchasing
         }
 
         return ['id' => $purchase->id];
+    }
+
+    /** @param array<string,mixed> $data
+     * @return array<string,mixed>
+     */
+    private function document(int $tenant, array $data): array
+    {
+        abort_unless(DB::table('suppliers')->where('tenant_id', $tenant)->where('id', $data['supplier_id'])->exists(), 404);
+        app(WarehouseAccess::class)->check($tenant, (int) $data['warehouse_id']);
+        $subtotal = 0;
+        foreach ($data['lines'] as $line) {
+            abort_unless(DB::table('products')->where('tenant_id', $tenant)->where('id', $line['product_id'])->exists(), 404);
+            $subtotal += $line['quantity'] * $line['unit_cost_minor'];
+        }
+        if ($subtotal <= 0 || $subtotal > 999999999 || $data['discount_minor'] > $subtotal) {
+            $this->commerce->fail('La compra requiere un subtotal positivo de hasta S/9.999.999,99 y descuento que no lo supere.');
+        }
+        $total = $subtotal - $data['discount_minor'] + $data['additional_minor'];
+        $id = DB::table('purchase_documents')->insertGetId(['tenant_id' => $tenant, 'supplier_id' => $data['supplier_id'], 'warehouse_id' => $data['warehouse_id'], 'reference' => $data['reference'], 'additional_minor' => $data['additional_minor'], 'discount_minor' => $data['discount_minor'], 'total_minor' => $total]);
+        $running = 0;
+        $allocated = 0;
+        foreach ($data['lines'] as $line) {
+            $running += $line['quantity'] * $line['unit_cost_minor'];
+            $target = intdiv($total * $running, $subtotal);
+            $value = $target - $allocated;
+            $allocated = $target;
+            $unit = intdiv($value, $line['quantity']);
+            $remainder = $value % $line['quantity'];
+            // Split at most two cost lots so every cent survives partial receipts and reversals.
+            foreach ([[$line['quantity'] - $remainder, $unit], [$remainder, $unit + 1]] as [$quantity, $cost]) {
+                if ($quantity === 0) {
+                    continue;
+                }
+                if ($cost > 999999999) {
+                    $this->commerce->fail('El costo distribuido supera el límite por unidad.');
+                }
+                DB::table('purchases')->insert(['tenant_id' => $tenant, 'document_id' => $id, 'supplier_id' => $data['supplier_id'], 'warehouse_id' => $data['warehouse_id'], 'reference' => $data['reference'], 'product_id' => $line['product_id'], 'quantity' => $quantity, 'unit_cost_minor' => $cost]);
+            }
+        }
+
+        return ['id' => $id, 'total_minor' => $total];
     }
 }

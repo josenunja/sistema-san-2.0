@@ -1,0 +1,19 @@
+{
+    "group": {
+        "default": { "targets": ["application", "web"] }
+    },
+    "target": {
+        "application": {
+            "context": ".",
+            "dockerfile": "Dockerfile.production",
+            "target": "app",
+            "tags": ["sas-san:revision-comercial"]
+        },
+        "web": {
+            "context": ".",
+            "dockerfile": "Dockerfile.production",
+            "target": "web",
+            "tags": ["sas-san:revision-comercial-web"]
+        }
+    }
+}

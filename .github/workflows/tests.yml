@@ -54,6 +54,7 @@ jobs:
           php artisan wayfinder:generate --with-form
       - name: Static checks and build
         run: |
+          node scripts/check-public-files.cjs
           vendor/bin/pint --test
           vendor/bin/phpstan analyse --memory-limit=512M
           npm run check
@@ -71,3 +72,33 @@ jobs:
         run: |
           composer audit --locked
           npm audit --audit-level=high
+      - name: Browser acceptance on synthetic data
+        env:
+          APP_ENV: testing
+          APP_URL: http://localhost:8002
+          DB_USERNAME: sas_runtime
+          BUSINESS_MODE: platform
+          E2E_DATABASE: sas_san_test
+          E2E_ACCESS_FILE: ${{ runner.temp }}/acceptance-access.json
+        run: |
+          php artisan testing:demo "$E2E_ACCESS_FILE"
+          php artisan serve --host=127.0.0.1 --port=8002 > "$RUNNER_TEMP/acceptance-server.log" 2>&1 &
+          curl --fail --silent --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8002/login > /dev/null
+          npx playwright install --with-deps chromium
+          npm run test:browser
+  delivery-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build paired application and web images
+        working-directory: app
+        run: docker buildx bake -f docker-bake.json --load
+      - name: Verify runtime and matching assets
+        run: |
+          test "$(docker image inspect sas-san:revision-comercial --format '{{.Config.User}}')" = www-data
+          docker run --rm --entrypoint php sas-san:revision-comercial -r 'exit(in_array("pgsql", PDO::getAvailableDrivers(), true) && extension_loaded("gd") && extension_loaded("sodium") ? 0 : 1);'
+          app_hash=$(docker run --rm --entrypoint php sas-san:revision-comercial -r 'echo hash_file("sha256", "public/build/manifest.json");')
+          web_hash=$(docker run --rm --entrypoint sha256sum sas-san:revision-comercial-web /var/www/html/public/build/manifest.json | cut -d' ' -f1)
+          test "$app_hash" = "$web_hash"

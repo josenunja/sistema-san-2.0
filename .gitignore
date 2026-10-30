@@ -13,3 +13,5 @@ copias/
 *.pfx
 *.dump
 *.ssbk
+**/*.env
+**/secrets/

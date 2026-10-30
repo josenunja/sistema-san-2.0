@@ -9,8 +9,7 @@ class Invitations
 {
     public function ensureCapacity(int $tenant, ?string $except = null): void
     {
-        $plan = DB::table('tenants')->where('id', $tenant)->value('plan');
-        $limit = (int) DB::table('plans')->where('slug', $plan)->value('user_limit');
+        $limit = app(BusinessLimits::class)->limit($tenant, 'user');
         $pending = DB::table('invitations')->where('tenant_id', $tenant)->whereNull('accepted_at')->whereNull('revoked_at')->where('expires_at', '>', now())
             ->when($except !== null, fn ($query) => $query->where('id', '!=', $except))->count();
         if (DB::table('memberships')->where('tenant_id', $tenant)->count() + $pending >= $limit) {

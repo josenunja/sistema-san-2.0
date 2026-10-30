@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\BusinessLimits;
 use App\Services\Commerce;
 use App\Services\ProductImages;
 use Illuminate\Http\RedirectResponse;
@@ -27,7 +28,7 @@ class CatalogToolsController extends Controller
         $tenant = $this->owner($request);
         DB::select('SELECT pg_advisory_xact_lock(?)', [$tenant]);
         abort_unless(DB::table('products')->where('tenant_id', $tenant)->where('id', $productId)->exists(), 404);
-        $data = $request->validate(['sku' => ['required', 'regex:/^[A-Za-z0-9._-]{1,64}$/', Rule::unique('products', 'sku')->where('tenant_id', $tenant)->ignore($productId)], 'name' => 'required|string|max:160', 'price_minor' => 'required|integer|min:0|max:999999999', 'compare_at_minor' => 'nullable|integer|min:1|max:999999999|gt:price_minor', 'published' => 'required|boolean', 'category' => 'nullable|string|max:100', 'audience' => ['sometimes', Rule::in(['women', 'men', 'kids', 'unisex'])], 'trending' => 'sometimes|boolean', 'variant_group' => 'nullable|string|max:100', 'size' => 'nullable|string|max:40', 'color' => 'nullable|string|max:60', 'description' => 'nullable|string|max:3000']);
+        $data = $request->validate(['sku' => ['required', 'regex:/^[A-Za-z0-9._-]{1,64}$/', Rule::unique('products', 'sku')->where('tenant_id', $tenant)->ignore($productId)], 'name' => 'required|string|max:160', 'price_minor' => 'required|integer|min:0|max:999999999', 'compare_at_minor' => 'nullable|integer|min:1|max:999999999|gt:price_minor', 'published' => 'required|boolean', 'archived' => 'sometimes|boolean', 'minimum_stock' => 'sometimes|integer|min:0|max:1000000', 'barcode' => ['nullable', 'string', 'max:64', Rule::unique('products', 'barcode')->where('tenant_id', $tenant)->ignore($productId)], 'category' => 'nullable|string|max:100', 'audience' => ['sometimes', Rule::in(['women', 'men', 'kids', 'unisex'])], 'trending' => 'sometimes|boolean', 'variant_group' => 'nullable|string|max:100', 'size' => 'nullable|string|max:40', 'color' => 'nullable|string|max:60', 'description' => 'nullable|string|max:3000']);
         foreach (['category', 'variant_group', 'size', 'color', 'description'] as $field) {
             $data[$field] ??= '';
         }
@@ -123,8 +124,8 @@ class CatalogToolsController extends Controller
             $rows = json_decode(Storage::disk('local')->get($preview['path']), true, 512, JSON_THROW_ON_ERROR);
             $existing = DB::table('products')->where('tenant_id', $tenant)->pluck('sku')->all();
             $new = count(array_filter($rows, fn ($row) => ! in_array($row['sku'], $existing, true)));
-            $plan = DB::table('tenants')->where('id', $tenant)->value('plan');
-            if (count($existing) + $new > DB::table('plans')->where('slug', $plan)->value('product_limit')) {
+            $limit = app(BusinessLimits::class)->limit($tenant, 'product');
+            if (count($existing) + $new > $limit) {
                 $commerce->fail('El archivo supera el límite de productos del plan.');
             }
             foreach ($rows as $row) {
