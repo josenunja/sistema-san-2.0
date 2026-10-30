@@ -80,6 +80,10 @@ class JornadaCompletaTest extends TestCase
 
         // 3. Crear Cajero (Restricted Role)
         $this->cashier = User::factory()->create(['name' => 'Cajero Turno Mañana', 'email' => 'cajero@elegancia.pe']);
+        $this->cashier->forceFill([
+            'two_factor_secret' => encrypt('CASHIERSECRET'),
+            'two_factor_confirmed_at' => now(),
+        ])->save();
         DB::table('memberships')->insert([
             'tenant_id' => $this->tenant,
             'user_id' => $this->cashier->id,
@@ -125,7 +129,7 @@ class JornadaCompletaTest extends TestCase
         $supplier = DB::table('suppliers')->insertGetId([
             'tenant_id' => $this->tenant,
             'name' => 'Textiles Gamarra SAC',
-            'document_number' => '20123456789',
+            'reference' => '20123456789',
         ]);
 
         // Compra: 10 poleras a S/ 20.00 c/u + 5 jeans a S/ 40.00 c/u
@@ -199,6 +203,7 @@ class JornadaCompletaTest extends TestCase
             'warehouse_id' => $this->warehouse,
             'cash_session_id' => $cashSession->id,
             'customer_name' => 'Juan Pérez',
+            'phone' => '999888777',
             'delivery_method' => 'pickup',
             'cash_minor' => 4500,
             'cash_received_minor' => 5000, // Billete de S/ 50.00
@@ -234,6 +239,7 @@ class JornadaCompletaTest extends TestCase
             'warehouse_id' => $this->warehouse,
             'cash_session_id' => $cashSession->id,
             'customer_name' => 'María Gomez',
+            'phone' => '999888777',
             'delivery_method' => 'pickup',
             'cash_minor' => 3000, // S/ 30 en efectivo
             'cash_received_minor' => 3000,
@@ -250,6 +256,14 @@ class JornadaCompletaTest extends TestCase
 
         // El propietario autoriza la venta con pago digital verificado
         $this->actingAs($this->owner);
+        $ownerCash = DB::table('cash_sessions')->insertGetId([
+            'tenant_id' => $this->tenant,
+            'warehouse_id' => $this->warehouse,
+            'user_id' => $this->owner->id,
+            'opening_minor' => 5000,
+            'opened_at' => now(),
+        ]);
+        $mixedData['cash_session_id'] = $ownerCash;
         $this->post('/gestion/boutique-elegancia/operacion', $mixedData)->assertSessionHasNoErrors();
 
         // Verificaciones Venta 2
@@ -268,6 +282,7 @@ class JornadaCompletaTest extends TestCase
             'credit_limit_minor' => 15000, // Límite S/ 150.00
         ]);
 
+        $this->actingAs($this->cashier);
         $creditSaleData = [
             'action' => 'pos_sale',
             'key' => (string) Str::uuid(),
@@ -275,6 +290,7 @@ class JornadaCompletaTest extends TestCase
             'cash_session_id' => $cashSession->id,
             'customer_id' => $customer,
             'customer_name' => 'Carlos Mendoza',
+            'phone' => '999888777',
             'delivery_method' => 'pickup',
             'cash_minor' => 0, // Todo a crédito
             'items' => [
@@ -333,7 +349,7 @@ class JornadaCompletaTest extends TestCase
         ])->assertForbidden();
 
         // El Propietario SÍ puede autorizar la reapertura con auditoría
-        $this->actingAs($this->owner);
+        $this->actingAs($this->owner)->withSession(['auth.password_confirmed_at' => time()]);
         $reopenResponse = $this->post('/gestion/boutique-elegancia/operacion', [
             'action' => 'reopen_cash',
             'key' => (string) Str::uuid(),
