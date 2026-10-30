@@ -23,13 +23,22 @@ DB::transaction(function () {
     DB::table('users')->delete();
     DB::table('tenants')->delete();
 
-    // 2. Crear Administrador sin 2FA obligatorio
+    // 2. Crear Administrador con 2FA confirmado para acceso a gestión y POS
+    $codes = [
+        'RECOV-1111-2222',
+        'RECOV-3333-4444',
+        'RECOV-5555-6666',
+        'RECOV-7777-8888',
+    ];
     $user = new User();
     $user->forceFill([
         'name' => 'Administrador Demo',
         'email' => 'admin@test.com',
         'password' => Hash::make('Admin12345678!'),
         'email_verified_at' => now(),
+        'two_factor_secret' => encrypt('JBSWY3DPEHPK3PXP'),
+        'two_factor_recovery_codes' => encrypt(json_encode($codes)),
+        'two_factor_confirmed_at' => now(),
         'platform_owner' => true,
     ]);
     $user->save();
