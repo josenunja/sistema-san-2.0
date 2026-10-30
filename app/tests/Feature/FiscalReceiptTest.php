@@ -11,10 +11,15 @@ use Tests\TestCase;
 class FiscalReceiptTest extends TestCase
 {
     private int $tenant;
+
     private int $warehouse;
+
     private int $product;
+
     private int $cashSession;
+
     private User $owner;
+
     private Commerce $commerce;
 
     protected function setUp(): void
@@ -108,7 +113,7 @@ class FiscalReceiptTest extends TestCase
             'cash_received_minor' => 12000,
         ];
 
-        $response = $this->post("/gestion/comercial-andina/operacion", $payload);
+        $response = $this->post('/gestion/comercial-andina/operacion', $payload);
         $response->assertSessionHasNoErrors();
         $response->assertSessionHas('success');
 
@@ -149,7 +154,7 @@ class FiscalReceiptTest extends TestCase
             'cash_received_minor' => 11800,
         ];
 
-        $this->post("/gestion/comercial-andina/operacion", $payload2)->assertSessionHasNoErrors();
+        $this->post('/gestion/comercial-andina/operacion', $payload2)->assertSessionHasNoErrors();
         $order2 = DB::table('orders')->where('tenant_id', $this->tenant)->where('id', '!=', $order->id)->first();
         $this->assertSame('boleta', $order2->document_type);
         $this->assertSame('B001', $order2->document_series);
@@ -177,7 +182,7 @@ class FiscalReceiptTest extends TestCase
             'cash_minor' => 11800,
         ];
 
-        $this->post("/gestion/comercial-andina/operacion", $invalidRucPayload)
+        $this->post('/gestion/comercial-andina/operacion', $invalidRucPayload)
             ->assertSessionHasErrors('operation');
 
         // 2. Factura válida con RUC 20601234567 y Razón Social
@@ -197,7 +202,7 @@ class FiscalReceiptTest extends TestCase
             'cash_minor' => 23600,
         ];
 
-        $res = $this->post("/gestion/comercial-andina/operacion", $validFacturaPayload);
+        $res = $this->post('/gestion/comercial-andina/operacion', $validFacturaPayload);
         $res->assertSessionHasNoErrors();
 
         $factura = DB::table('orders')->where('tenant_id', $this->tenant)->where('document_type', 'factura')->first();
@@ -234,7 +239,7 @@ class FiscalReceiptTest extends TestCase
             'cash_minor' => 11800,
         ];
 
-        $this->post("/gestion/comercial-andina/operacion", $payload)->assertSessionHasNoErrors();
+        $this->post('/gestion/comercial-andina/operacion', $payload)->assertSessionHasNoErrors();
 
         $ticket = DB::table('orders')->where('tenant_id', $this->tenant)->first();
         $this->assertSame('ticket', $ticket->document_type);
@@ -260,7 +265,7 @@ class FiscalReceiptTest extends TestCase
             'cash_minor' => 82600,
         ];
 
-        $this->post("/gestion/comercial-andina/operacion", $sinDniPayload)
+        $this->post('/gestion/comercial-andina/operacion', $sinDniPayload)
             ->assertSessionHasErrors('operation');
 
         // Con DNI de 8 dígitos debe proceder con éxito
@@ -279,7 +284,7 @@ class FiscalReceiptTest extends TestCase
             'cash_minor' => 82600,
         ];
 
-        $this->post("/gestion/comercial-andina/operacion", $conDniPayload)
+        $this->post('/gestion/comercial-andina/operacion', $conDniPayload)
             ->assertSessionHasNoErrors();
 
         $boleta = DB::table('orders')->where('tenant_id', $this->tenant)->where('customer_document_number', '72345678')->first();

@@ -26,6 +26,8 @@ class ProvisionRuntime extends Command
         DB::statement('GRANT USAGE ON SCHEMA public TO sas_runtime');
         DB::statement('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO sas_runtime');
         DB::statement('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sas_runtime');
+        DB::statement('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO sas_runtime');
+        DB::statement('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO sas_runtime');
         $this->info('Runtime provisioned; migrations must continue to use sas_owner.');
 
         return self::SUCCESS;

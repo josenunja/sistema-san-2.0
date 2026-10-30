@@ -1,13 +1,14 @@
 <?php
 
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__.'/../vendor/autoload.php';
 
-$app = require_once __DIR__ . '/../bootstrap/app.php';
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+$app = require_once __DIR__.'/../bootstrap/app.php';
+$kernel = $app->make(Kernel::class);
 $kernel->bootstrap();
 
 use App\Models\User;
 use App\Services\Commerce;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
@@ -30,7 +31,7 @@ DB::transaction(function () {
         'RECOV-5555-6666',
         'RECOV-7777-8888',
     ];
-    $user = new User();
+    $user = new User;
     $user->forceFill([
         'name' => 'Administrador Demo',
         'email' => 'admin@test.com',

@@ -11,7 +11,7 @@ use Tests\TestCase;
 
 /**
  * Suite de Prueba Senior: Simulación E2E de Jornada Comercial Completa
- * 
+ *
  * Flujo:
  * 1. Alta de productos con SKU y código de barras.
  * 2. Compra a proveedor y recepción de mercadería en almacén.
@@ -26,12 +26,19 @@ use Tests\TestCase;
 class JornadaCompletaTest extends TestCase
 {
     private int $tenant;
+
     private int $warehouse;
+
     private int $productA;
+
     private int $productB;
+
     private User $owner;
+
     private User $cashier;
+
     private Commerce $commerce;
+
     private Purchasing $purchasing;
 
     protected function setUp(): void

@@ -1,10 +1,11 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Contracts\Console\Kernel;
 
 require __DIR__.'/../vendor/autoload.php';
 $app = require_once __DIR__.'/../bootstrap/app.php';
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+$kernel = $app->make(Kernel::class);
 $kernel->bootstrap();
 
 $user = User::where('email', 'admin@test.com')->first();
@@ -21,7 +22,7 @@ if ($user) {
         'two_factor_confirmed_at' => now(),
     ])->save();
     echo "OK: 2FA activado para {$user->email}\n";
-    echo "Recovery codes: " . implode(', ', $codes) . "\n";
+    echo 'Recovery codes: '.implode(', ', $codes)."\n";
 } else {
     echo "ERROR: Usuario no encontrado\n";
 }
