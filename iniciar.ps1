@@ -55,4 +55,4 @@ if($Modo -eq 'Docker'){
     $urlLine=Get-Content -LiteralPath '.env' | Where-Object {$_ -match '^APP_URL='} | Select-Object -First 1
     if($urlLine){$publicUrl=($urlLine -replace '^APP_URL=','').Trim().Trim('"')}
 }elseif($env:APP_URL){$publicUrl=$env:APP_URL}
-Write-Host "Sistema: $publicUrl — configuración inicial en $publicUrl/instalacion."
+Write-Host "Sistema: $publicUrl - Configuracion inicial en $publicUrl/instalacion."
