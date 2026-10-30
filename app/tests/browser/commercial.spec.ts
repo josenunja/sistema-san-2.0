@@ -171,12 +171,17 @@ test('offline: una venta desconectada conserva pendientes al recargar y sincroni
     );
     let cash = cashRow?.id;
     if (!cash) {
+        const availablePosition = pos.props.data.stock.find(
+            (row) =>
+                row.physical - row.reserved - row.blocked - row.offline >= 1,
+        );
+        expect(availablePosition).toBeTruthy();
         const response = await page.request.post(`/gestion/${slug}/operacion`, {
             headers,
             data: {
                 action: 'open_cash',
                 key: crypto.randomUUID(),
-                warehouse_id: pos.props.warehouses[0].id,
+                warehouse_id: availablePosition!.warehouse_id,
                 opening_minor: 0,
             },
         });
