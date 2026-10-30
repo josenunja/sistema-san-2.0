@@ -4,9 +4,13 @@ const { execFileSync } = require('node:child_process');
 const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
     encoding: 'utf8',
 }).trim();
-const files = execFileSync('git', ['-C', root, 'ls-files', '--full-name', '-z'], {
-    encoding: 'utf8',
-})
+const files = execFileSync(
+    'git',
+    ['-C', root, 'ls-files', '--full-name', '-z'],
+    {
+        encoding: 'utf8',
+    },
+)
     .split('\0')
     .filter(Boolean);
 const findings = [];
