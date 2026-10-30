@@ -181,11 +181,12 @@ class CommerceReadinessTest extends TestCase
     public function test_session_management_uses_opaque_keys_and_cannot_revoke_another_account(): void
     {
         config(['session.driver' => 'database']);
+        $this->withSession(['auth.password_confirmed_at' => time()]);
         $other = User::factory()->create();
         DB::table('sessions')->insert(['id' => 'private-session-demo', 'user_id' => $this->owner->id, 'payload' => '', 'last_activity' => time(), 'user_agent' => 'Navegador demo']);
         DB::table('sessions')->insert(['id' => 'another-user-session', 'user_id' => $other->id, 'payload' => '', 'last_activity' => time()]);
         $key = hash_hmac('sha256', 'private-session-demo', config('app.key'));
-        $this->get('/settings/security')->assertInertia(fn (Assert $page) => $page->has('sessions', 1)->where('sessions.0.key', $key)->missing('sessions.0.id'));
+        $this->get('/settings/security')->assertOk()->assertInertia(fn (Assert $page) => $page->has('sessions', 1)->where('sessions.0.key', $key)->missing('sessions.0.id'));
         $foreignKey = hash_hmac('sha256', 'another-user-session', config('app.key'));
         $this->delete('/settings/sessions/'.$foreignKey)->assertNotFound();
         $this->delete('/settings/sessions/'.$key)->assertSessionHasNoErrors();
