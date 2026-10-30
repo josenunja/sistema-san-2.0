@@ -13,5 +13,8 @@ copias/
 *.pfx
 *.dump
 *.ssbk
+respaldos/
+claves/
+ESTADO_ULTIMO_RESPALDO.txt
 **/*.env
 **/secrets/

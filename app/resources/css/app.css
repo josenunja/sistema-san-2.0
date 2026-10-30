@@ -171,3 +171,35 @@
         @apply bg-background text-foreground;
     }
 }
+
+/* Optimización para Impresión Térmica de Tickets (80mm / 58mm) */
+@media print {
+    @page {
+        margin: 0;
+        size: auto;
+    }
+    body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 2mm !important;
+        font-family:
+            ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+        font-size: 12px !important;
+        line-height: 1.25 !important;
+    }
+    .print\:hidden,
+    nav,
+    aside,
+    header,
+    footer,
+    button:not(.print\:visible) {
+        display: none !important;
+    }
+    .print-ticket {
+        width: 100% !important;
+        max-width: 80mm !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+    }
+}

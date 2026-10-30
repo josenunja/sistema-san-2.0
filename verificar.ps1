@@ -1,4 +1,4 @@
-param([string]$Filter = 'Tenant|Commerce|Offline|Platform|Catalog|Customer|Fiscal|StoreOnboarding|SingleBusiness')
+param([string]$Filter = 'Tenant|Commerce|Offline|Platform|Catalog|Customer|Fiscal|StoreOnboarding|SingleBusiness|JornadaCompleta')
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot 'app')
 foreach ($line in Get-Content -LiteralPath '.env.native') {
