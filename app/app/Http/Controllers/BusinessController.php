@@ -226,7 +226,33 @@ class BusinessController extends Controller
     /** @return array<string, mixed> */
     public static function orderRules(): array
     {
-        return ['warehouse_id' => 'required|integer', 'customer_id' => 'nullable|integer', 'customer_name' => 'required|string|max:160', 'phone' => 'required|string|max:30', 'email' => 'nullable|email|max:254', 'address' => 'nullable|string|max:1000', 'delivery_method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])], 'coupon' => 'nullable|string|max:40', 'cash_session_id' => 'nullable|integer', 'delivery_zone_id' => 'nullable|integer', 'delivery_slot_id' => 'nullable|integer', 'cash_minor' => 'nullable|integer|min:0|max:999999999', 'cash_received_minor' => 'nullable|integer|min:0|max:999999999', 'payments' => 'sometimes|array|max:10', 'payments.*.method' => ['required', Rule::in(['yape', 'bcp'])], 'payments.*.amount_minor' => 'required|integer|min:1|max:999999999', 'payments.*.reference' => 'required|string|max:120', 'items' => 'required|array|min:1|max:100', 'items.*.product_id' => 'required|integer', 'items.*.quantity' => 'required|integer|min:1|max:10000'];
+        return [
+            'warehouse_id' => 'required|integer',
+            'customer_id' => 'nullable|integer',
+            'customer_name' => 'required|string|max:160',
+            'phone' => 'required|string|max:30',
+            'email' => 'nullable|email|max:254',
+            'address' => 'nullable|string|max:1000',
+            'delivery_method' => ['required', Rule::in(['pickup', 'delivery', 'courier', 'shipping'])],
+            'coupon' => 'nullable|string|max:40',
+            'cash_session_id' => 'nullable|integer',
+            'delivery_zone_id' => 'nullable|integer',
+            'delivery_slot_id' => 'nullable|integer',
+            'cash_minor' => 'nullable|integer|min:0|max:999999999',
+            'cash_received_minor' => 'nullable|integer|min:0|max:999999999',
+            'payments' => 'sometimes|array|max:10',
+            'payments.*.method' => ['required', Rule::in(['yape', 'bcp'])],
+            'payments.*.amount_minor' => 'required|integer|min:1|max:999999999',
+            'payments.*.reference' => 'required|string|max:120',
+            'items' => 'required|array|min:1|max:100',
+            'items.*.product_id' => 'required|integer',
+            'items.*.quantity' => 'required|integer|min:1|max:10000',
+            'document_type' => ['nullable', Rule::in(['ticket', 'boleta', 'factura'])],
+            'document_series' => 'nullable|string|max:10',
+            'customer_document_type' => ['nullable', Rule::in(['dni', 'ruc', 'ce', 'pasaporte', 'otro'])],
+            'customer_document_number' => 'nullable|string|max:20',
+            'customer_legal_name' => 'nullable|string|max:200',
+        ];
     }
 
     /**

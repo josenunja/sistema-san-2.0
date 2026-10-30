@@ -650,6 +650,10 @@ function send(action: string, data: Record<string, unknown>) {
                     sale.customer_name = '';
                     sale.phone = '';
                     sale.coupon = '';
+                    sale.document_type = 'ticket';
+                    sale.customer_document_type = 'dni';
+                    sale.customer_document_number = '';
+                    sale.customer_legal_name = '';
                 }
             },
             onFinish: () => (busy.value = false),
@@ -696,6 +700,10 @@ const sale = reactive({
     reference: '',
     digital_confirmed: false,
     coupon: '',
+    document_type: 'ticket',
+    customer_document_type: 'dni',
+    customer_document_number: '',
+    customer_legal_name: '',
 });
 function add() {
     const p = products.value.find((p) => p.id === Number(picker.value));
@@ -721,12 +729,43 @@ function sell() {
         };
         return;
     }
+    if (sale.document_type === 'factura') {
+        const ruc = sale.customer_document_number.trim();
+        if (!/^(10|15|17|20)\d{9}$/.test(ruc)) {
+            errors.value = {
+                operation:
+                    'Para emitir Factura ingresa un RUC válido de 11 dígitos que inicie con 10, 15, 17 o 20.',
+            };
+            return;
+        }
+        if (!sale.customer_legal_name.trim()) {
+            errors.value = {
+                operation:
+                    'Para emitir Factura es obligatoria la Razón Social de la empresa compradora.',
+            };
+            return;
+        }
+    }
+    if (
+        sale.document_type === 'boleta' &&
+        subtotal.value >= 70000 &&
+        !sale.customer_document_number.trim()
+    ) {
+        errors.value = {
+            operation:
+                'SUNAT: Para boletas de venta iguales o mayores a S/ 700.00 es obligatorio el DNI/documento del cliente.',
+        };
+        return;
+    }
     try {
         send('pos_sale', {
             warehouse_id: sale.warehouse_id,
             cash_session_id: sale.cash_session_id,
             customer_id: sale.customer_id || null,
-            customer_name: sale.customer_name,
+            customer_name:
+                sale.document_type === 'factura' && sale.customer_legal_name
+                    ? sale.customer_legal_name
+                    : sale.customer_name,
             phone: sale.phone,
             delivery_method: 'pickup',
             items: cart.value,
@@ -742,6 +781,13 @@ function sell() {
                   ]
                 : [],
             coupon: sale.coupon || null,
+            document_type: sale.document_type,
+            customer_document_type:
+                sale.document_type === 'factura'
+                    ? 'ruc'
+                    : sale.customer_document_type,
+            customer_document_number: sale.customer_document_number.trim(),
+            customer_legal_name: sale.customer_legal_name.trim(),
         });
     } catch (e) {
         errors.value = { operation: (e as Error).message };
@@ -1021,6 +1067,172 @@ const reportCards = [
                     <h2 class="text-lg font-semibold">
                         Cobrar o registrar crédito
                     </h2>
+
+                    <!-- Comprobante Fiscal (Boleta / Factura / Nota de venta) -->
+                    <div
+                        class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                        <label
+                            class="mb-2 block text-xs font-semibold tracking-wider text-slate-700 uppercase"
+                        >
+                            Comprobante a emitir
+                        </label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button
+                                type="button"
+                                :class="[
+                                    'rounded-xl border p-2 text-center text-xs font-medium transition',
+                                    sale.document_type === 'ticket'
+                                        ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100',
+                                ]"
+                                @click="
+                                    sale.document_type = 'ticket';
+                                    sale.customer_document_type = 'dni';
+                                "
+                            >
+                                Nota de Venta
+                                <span
+                                    class="block font-mono text-[10px] opacity-80"
+                                    >T001</span
+                                >
+                            </button>
+                            <button
+                                type="button"
+                                :class="[
+                                    'rounded-xl border p-2 text-center text-xs font-medium transition',
+                                    sale.document_type === 'boleta'
+                                        ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100',
+                                ]"
+                                @click="
+                                    sale.document_type = 'boleta';
+                                    sale.customer_document_type = 'dni';
+                                "
+                            >
+                                Boleta de Venta
+                                <span
+                                    class="block font-mono text-[10px] opacity-80"
+                                    >B001</span
+                                >
+                            </button>
+                            <button
+                                type="button"
+                                :class="[
+                                    'rounded-xl border p-2 text-center text-xs font-medium transition',
+                                    sale.document_type === 'factura'
+                                        ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100',
+                                ]"
+                                @click="
+                                    sale.document_type = 'factura';
+                                    sale.customer_document_type = 'ruc';
+                                "
+                            >
+                                Factura Comercial
+                                <span
+                                    class="block font-mono text-[10px] opacity-80"
+                                    >F001</span
+                                >
+                            </button>
+                        </div>
+
+                        <!-- Detalle cuando es Factura -->
+                        <div
+                            v-if="sale.document_type === 'factura'"
+                            class="mt-3 grid gap-3 border-t border-slate-200 pt-3"
+                        >
+                            <div>
+                                <label
+                                    class="block text-xs font-medium text-slate-700"
+                                    >RUC de la empresa (11 dígitos) *</label
+                                >
+                                <input
+                                    v-model="sale.customer_document_number"
+                                    type="text"
+                                    maxlength="11"
+                                    placeholder="Ej. 20601234567"
+                                    required
+                                    class="mt-1 w-full rounded-xl border bg-white p-2.5 text-sm"
+                                />
+                                <span class="text-[11px] text-slate-500"
+                                    >Debe comenzar con 10, 15, 17 o 20.</span
+                                >
+                            </div>
+                            <div>
+                                <label
+                                    class="block text-xs font-medium text-slate-700"
+                                    >Razón Social *</label
+                                >
+                                <input
+                                    v-model="sale.customer_legal_name"
+                                    type="text"
+                                    placeholder="Ej. DISTRIBUIDORA COMERCIAL S.A.C."
+                                    required
+                                    class="mt-1 w-full rounded-xl border bg-white p-2.5 text-sm"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- Detalle cuando es Boleta -->
+                        <div
+                            v-else-if="sale.document_type === 'boleta'"
+                            class="mt-3 grid gap-3 border-t border-slate-200 pt-3"
+                        >
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="col-span-1">
+                                    <label
+                                        class="block text-xs font-medium text-slate-700"
+                                        >Doc.</label
+                                    >
+                                    <select
+                                        v-model="sale.customer_document_type"
+                                        class="mt-1 w-full rounded-xl border bg-white p-2.5 text-sm"
+                                    >
+                                        <option value="dni">DNI</option>
+                                        <option value="ce">C.E.</option>
+                                        <option value="pasaporte">
+                                            Pasap.
+                                        </option>
+                                        <option value="otro">Otro</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-2">
+                                    <label
+                                        class="block text-xs font-medium text-slate-700"
+                                    >
+                                        Número
+                                        {{
+                                            subtotal >= 70000
+                                                ? '*'
+                                                : '(opcional)'
+                                        }}
+                                    </label>
+                                    <input
+                                        v-model="sale.customer_document_number"
+                                        type="text"
+                                        maxlength="15"
+                                        :placeholder="
+                                            sale.customer_document_type ===
+                                            'dni'
+                                                ? '8 dígitos'
+                                                : 'Número'
+                                        "
+                                        :required="subtotal >= 70000"
+                                        class="mt-1 w-full rounded-xl border bg-white p-2.5 text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <p
+                                v-if="subtotal >= 70000"
+                                class="text-[11px] font-medium text-amber-800"
+                            >
+                                SUNAT: Boletas iguales o mayores a S/ 700.00
+                                requieren identificar al cliente con su
+                                documento.
+                            </p>
+                        </div>
+                    </div>
                     <div class="grid gap-2">
                         <label
                             >Buscar cliente por nombre, teléfono o correo<input

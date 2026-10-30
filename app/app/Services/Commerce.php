@@ -204,6 +204,59 @@ class Commerce
     }
 
     /**
+     * @return array{document_type: string, document_series: string, document_number: int, formatted_correlative: string}
+     */
+    public function allocateFiscalNumber(int $tenant, string $documentType, ?string $preferredSeries = null): array
+    {
+        $documentType = match ($documentType) {
+            'factura' => 'factura',
+            'boleta' => 'boleta',
+            default => 'ticket',
+        };
+
+        $defaultSeries = match ($documentType) {
+            'factura' => 'F001',
+            'boleta' => 'B001',
+            default => 'T001',
+        };
+
+        $series = $preferredSeries ? strtoupper(trim($preferredSeries)) : $defaultSeries;
+        if (! preg_match('/^[A-Z0-9]{3,5}$/', $series)) {
+            $series = $defaultSeries;
+        }
+
+        DB::table('fiscal_series_sequences')->insertOrIgnore([
+            'tenant_id' => $tenant,
+            'document_type' => $documentType,
+            'series' => $series,
+            'current_number' => 0,
+            'created_at' => now(),
+        ]);
+
+        $seq = DB::table('fiscal_series_sequences')
+            ->where('tenant_id', $tenant)
+            ->where('document_type', $documentType)
+            ->where('series', $series)
+            ->lockForUpdate()
+            ->first();
+
+        $nextNumber = ($seq ? (int) $seq->current_number : 0) + 1;
+
+        DB::table('fiscal_series_sequences')
+            ->where('tenant_id', $tenant)
+            ->where('document_type', $documentType)
+            ->where('series', $series)
+            ->update(['current_number' => $nextNumber]);
+
+        return [
+            'document_type' => $documentType,
+            'document_series' => $series,
+            'document_number' => $nextNumber,
+            'formatted_correlative' => sprintf('%s-%08d', $series, $nextNumber),
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
@@ -270,9 +323,79 @@ class Commerce
                 $this->fail('La venta supera el límite de crédito autorizado para este cliente.');
             }
         }
+        $documentType = match ($data['document_type'] ?? 'ticket') {
+            'factura' => 'factura',
+            'boleta' => 'boleta',
+            default => 'ticket',
+        };
+        $customerDocType = (string) ($data['customer_document_type'] ?? ($documentType === 'factura' ? 'ruc' : 'dni'));
+        $customerDocNumber = trim((string) ($data['customer_document_number'] ?? ''));
+        $customerLegalName = trim((string) ($data['customer_legal_name'] ?? ''));
+
+        if ($documentType === 'factura') {
+            $customerDocType = 'ruc';
+            if (! preg_match('/^(10|15|17|20)\d{9}$/', $customerDocNumber)) {
+                $this->fail('Para emitir Factura se requiere un RUC válido de 11 dígitos que comience con 10, 15, 17 o 20.');
+            }
+            if ($customerLegalName === '') {
+                $customerLegalName = trim((string) ($data['customer_name'] ?? ''));
+            }
+            if (mb_strlen($customerLegalName) < 3) {
+                $this->fail('Para emitir Factura es obligatoria la Razón Social o denominación legal.');
+            }
+        } elseif ($documentType === 'boleta') {
+            if (! in_array($customerDocType, ['dni', 'ce', 'pasaporte', 'otro'], true)) {
+                $customerDocType = 'dni';
+            }
+            if ($customerDocType === 'dni' && $customerDocNumber !== '') {
+                if (! preg_match('/^\d{8}$/', $customerDocNumber)) {
+                    $this->fail('El DNI ingresado debe tener exactamente 8 dígitos numéricos.');
+                }
+            }
+            if ($total >= 70000 && $customerDocNumber === '') {
+                $this->fail('Para Boletas de venta de S/ 700.00 o más es obligatorio ingresar el DNI o documento del comprador.');
+            }
+        } else {
+            if (! in_array($customerDocType, ['dni', 'ruc', 'ce', 'pasaporte', 'otro'], true)) {
+                $customerDocType = 'dni';
+            }
+        }
+
+        $taxBaseMinor = (int) round($total / 1.18);
+        $taxIgvMinor = $total - $taxBaseMinor;
+        $fiscal = $this->allocateFiscalNumber($tenant, $documentType, $data['document_series'] ?? null);
+
         $id = (string) Str::uuid();
         $secret = Str::random(64);
-        DB::table('orders')->insert(['id' => $id, 'tenant_id' => $tenant, 'warehouse_id' => $data['warehouse_id'], 'customer_id' => $customerId, 'channel' => $pos ? 'pos' : 'web', 'status' => 'reserved', 'delivery_method' => $data['delivery_method'], 'customer_name' => $data['customer_name'], 'phone' => $data['phone'], 'email' => $data['email'] ?? '', 'address' => $data['address'] ?? '', 'subtotal_minor' => $quote['subtotal_minor'], 'discount_minor' => $quote['discount_minor'], 'delivery_minor' => $delivery, 'total_minor' => $total, 'coupon_id' => $quote['coupon_id'], 'tracking_hash' => hash('sha256', $secret), 'expires_at' => now()->addMinutes(30), 'due_at' => ($pos && $paid < $total && $customer) ? now()->addDays($customer->credit_days) : null]);
+        DB::table('orders')->insert([
+            'id' => $id,
+            'tenant_id' => $tenant,
+            'warehouse_id' => $data['warehouse_id'],
+            'customer_id' => $customerId,
+            'channel' => $pos ? 'pos' : 'web',
+            'status' => 'reserved',
+            'delivery_method' => $data['delivery_method'],
+            'customer_name' => $documentType === 'factura' ? $customerLegalName : $data['customer_name'],
+            'phone' => $data['phone'],
+            'email' => $data['email'] ?? '',
+            'address' => $data['address'] ?? '',
+            'subtotal_minor' => $quote['subtotal_minor'],
+            'discount_minor' => $quote['discount_minor'],
+            'delivery_minor' => $delivery,
+            'total_minor' => $total,
+            'coupon_id' => $quote['coupon_id'],
+            'tracking_hash' => hash('sha256', $secret),
+            'expires_at' => now()->addMinutes(30),
+            'due_at' => ($pos && $paid < $total && $customer) ? now()->addDays($customer->credit_days) : null,
+            'document_type' => $fiscal['document_type'],
+            'document_series' => $fiscal['document_series'],
+            'document_number' => $fiscal['document_number'],
+            'customer_document_type' => $customerDocType,
+            'customer_document_number' => $customerDocNumber,
+            'customer_legal_name' => $customerLegalName,
+            'tax_base_minor' => $taxBaseMinor,
+            'tax_igv_minor' => $taxIgvMinor,
+        ]);
         DB::table('orders')->where('tenant_id', $tenant)->where('id', $id)->update(['delivery_zone_id' => $shipping['zone_id'], 'delivery_slot_id' => $shipping['slot_id'], 'delivery_label' => $shipping['label']]);
         if ($pos) {
             DB::table('orders')->where('tenant_id', $tenant)->where('id', $id)->update(['cash_received_minor' => $received, 'change_minor' => $received - $cashApplied]);
@@ -306,7 +429,15 @@ class Commerce
             }
         }
 
-        return ['id' => $id, 'token' => $secret, 'total_minor' => $total];
+        return [
+            'id' => $id,
+            'token' => $secret,
+            'total_minor' => $total,
+            'document_type' => $fiscal['document_type'],
+            'document_series' => $fiscal['document_series'],
+            'document_number' => $fiscal['document_number'],
+            'correlative' => $fiscal['formatted_correlative'],
+        ];
     }
 
     public function order(int $tenant, string $id): \stdClass
@@ -346,7 +477,13 @@ class Commerce
         }
         DB::table('orders')->where('tenant_id', $tenant)->where('id', $id)->update(['status' => 'confirmed']);
         DB::table('sales')->insert(['tenant_id' => $tenant, 'order_id' => $id]);
-        DB::table('fiscal_documents')->insert(['tenant_id' => $tenant, 'order_id' => $id, 'status' => 'unconfigured']);
+        $providerRef = sprintf('%s-%08d', $order->document_series, $order->document_number);
+        DB::table('fiscal_documents')->insert([
+            'tenant_id' => $tenant,
+            'order_id' => $id,
+            'status' => 'unconfigured',
+            'provider_reference' => $providerRef,
+        ]);
         $this->recordOrderEvent(
             $tenant,
             $id,

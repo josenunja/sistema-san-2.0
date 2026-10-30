@@ -49,6 +49,14 @@ const props = defineProps<{
         cash_received_minor?: number;
         change_minor?: number;
         delivery_label?: string;
+        document_type?: 'ticket' | 'boleta' | 'factura';
+        document_series?: string;
+        document_number?: number;
+        customer_document_type?: string;
+        customer_document_number?: string;
+        customer_legal_name?: string;
+        tax_base_minor?: number;
+        tax_igv_minor?: number;
     };
     lines: Line[];
     payments: Payment[];
@@ -70,6 +78,37 @@ const page = usePage();
 const busy = ref(false);
 const errors = ref<Record<string, string>>({});
 const key = ref(crypto.randomUUID());
+const fiscalTitle = computed(() => {
+    switch (props.order.document_type) {
+        case 'factura':
+            return 'FACTURA ELECTRÓNICA';
+        case 'boleta':
+            return 'BOLETA DE VENTA ELECTRÓNICA';
+        default:
+            return 'NOTA DE VENTA / TICKET';
+    }
+});
+const fiscalCorrelative = computed(() => {
+    const defaultSeries =
+        props.order.document_type === 'factura'
+            ? 'F001'
+            : props.order.document_type === 'boleta'
+              ? 'B001'
+              : 'T001';
+    const series = props.order.document_series || defaultSeries;
+    const num = String(props.order.document_number || 0).padStart(8, '0');
+    return `${series}-${num}`;
+});
+const taxBase = computed(() =>
+    props.order.tax_base_minor !== undefined && props.order.tax_base_minor > 0
+        ? props.order.tax_base_minor
+        : Math.round(props.order.total_minor / 1.18),
+);
+const taxIgv = computed(() =>
+    props.order.tax_igv_minor !== undefined && props.order.tax_igv_minor > 0
+        ? props.order.tax_igv_minor
+        : props.order.total_minor - taxBase.value,
+);
 const refunded = computed(() =>
     props.refunds.reduce((a, r) => a + Number(r.amount_minor), 0),
 );
@@ -228,19 +267,26 @@ function printTicket() {
                 <p class="mt-6 text-xs tracking-widest text-slate-500">
                     {{ tenant.name }}
                 </p>
-                <h1 class="mt-2 text-3xl font-semibold">
-                    Pedido {{ order.id.slice(0, 8) }}
-                </h1>
+                <div class="mt-2 flex flex-wrap items-center gap-3">
+                    <h1 class="text-3xl font-semibold">
+                        Pedido {{ order.id.slice(0, 8) }}
+                    </h1>
+                    <span
+                        class="rounded-lg bg-emerald-100 px-3 py-1 font-mono text-xs font-semibold text-emerald-800"
+                    >
+                        {{ fiscalTitle }} · {{ fiscalCorrelative }}
+                    </span>
+                </div>
                 <p class="mt-3 text-sm text-slate-500">
                     {{ localDate(order.created_at) }}
                 </p>
             </div>
             <button
                 v-if="order.status === 'confirmed'"
-                class="rounded-xl border bg-white px-5 py-3 text-sm print:hidden"
+                class="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-medium hover:bg-slate-50 print:hidden"
                 @click="printTicket"
             >
-                Imprimir ticket interno
+                Imprimir comprobante
             </button>
         </div>
         <p
@@ -366,7 +412,35 @@ function printTicket() {
             class="my-7 grid gap-5 rounded-2xl border bg-white p-6 md:grid-cols-2"
         >
             <div>
-                <h2 class="font-semibold">{{ order.customer_name }}</h2>
+                <span
+                    class="inline-block rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-semibold tracking-wider text-emerald-800 uppercase"
+                >
+                    {{ fiscalTitle }}
+                </span>
+                <p class="mt-2 font-mono text-lg font-bold text-slate-800">
+                    {{ fiscalCorrelative }}
+                </p>
+                <h2 class="mt-2 font-semibold">{{ order.customer_name }}</h2>
+                <p
+                    v-if="order.customer_document_number"
+                    class="text-sm text-slate-600"
+                >
+                    {{
+                        (
+                            order.customer_document_type ||
+                            (order.document_type === 'factura' ? 'RUC' : 'DNI')
+                        ).toUpperCase()
+                    }}: {{ order.customer_document_number }}
+                </p>
+                <p
+                    v-if="
+                        order.customer_legal_name &&
+                        order.customer_legal_name !== order.customer_name
+                    "
+                    class="text-sm text-slate-600"
+                >
+                    Razón Social: {{ order.customer_legal_name }}
+                </p>
                 <p class="mt-2 text-sm text-slate-500">{{ order.phone }}</p>
                 <p class="mt-2 text-sm">
                     {{
@@ -384,12 +458,24 @@ function printTicket() {
                 </p>
             </div>
             <dl class="grid grid-cols-2 gap-3 text-sm">
-                <dt>Descuento</dt>
-                <dd class="text-right">{{ money(order.discount_minor) }}</dd>
-                <dt>Entrega</dt>
-                <dd class="text-right">{{ money(order.delivery_minor) }}</dd>
-                <dt class="text-xl font-semibold">Total</dt>
-                <dd class="text-right text-xl font-semibold">
+                <dt>Op. Gravadas (Base)</dt>
+                <dd class="text-right">{{ money(taxBase) }}</dd>
+                <dt>I.G.V. (18%)</dt>
+                <dd class="text-right">{{ money(taxIgv) }}</dd>
+                <template v-if="order.discount_minor > 0">
+                    <dt>Descuento</dt>
+                    <dd class="text-right text-emerald-700">
+                        -{{ money(order.discount_minor) }}
+                    </dd>
+                </template>
+                <template v-if="order.delivery_minor > 0">
+                    <dt>Entrega</dt>
+                    <dd class="text-right">
+                        {{ money(order.delivery_minor) }}
+                    </dd>
+                </template>
+                <dt class="border-t pt-2 text-xl font-semibold">Total</dt>
+                <dd class="border-t pt-2 text-right text-xl font-semibold">
                     {{ money(order.total_minor) }}
                 </dd>
                 <dt>Devoluciones comerciales</dt>
@@ -404,10 +490,163 @@ function printTicket() {
                 >
             </dl>
         </section>
-        <p class="my-6 border-t pt-4 text-xs text-slate-500">
-            DOCUMENTO INTERNO · No es comprobante electrónico aceptado por
-            SUNAT. La emisión fiscal no está configurada.
-        </p>
+        <div class="my-6 border-t pt-4 text-xs text-slate-500 print:hidden">
+            <template
+                v-if="
+                    order.document_type === 'factura' ||
+                    order.document_type === 'boleta'
+                "
+            >
+                <p class="font-medium text-slate-700">
+                    {{ fiscalTitle }} · {{ fiscalCorrelative }}
+                </p>
+                <p class="mt-1 text-slate-500">
+                    Comprobante registrado en el sistema. Emisión y control
+                    interno comercial según normativa tributaria.
+                </p>
+            </template>
+            <template v-else>
+                <p>
+                    NOTA DE VENTA / DOCUMENTO INTERNO · No es comprobante
+                    electrónico aceptado por SUNAT.
+                </p>
+            </template>
+        </div>
+
+        <!-- Formato Exclusivo para Impresoras Térmicas de Tickets (80mm / 58mm) -->
+        <div
+            class="print-ticket hidden font-mono text-xs leading-tight text-black print:block"
+        >
+            <div class="border-b border-dashed border-black pb-2 text-center">
+                <h1 class="text-sm font-bold uppercase">{{ tenant.name }}</h1>
+                <p class="mt-1 text-[11px] font-bold">{{ fiscalTitle }}</p>
+                <p class="mt-0.5 text-sm font-bold tracking-widest">
+                    {{ fiscalCorrelative }}
+                </p>
+                <p class="mt-1 text-[10px]">
+                    {{ localDate(order.created_at) }}
+                </p>
+            </div>
+
+            <div class="border-b border-dashed border-black py-2 text-[11px]">
+                <p><strong>Cliente:</strong> {{ order.customer_name }}</p>
+                <p v-if="order.customer_document_number">
+                    <strong
+                        >{{
+                            (
+                                order.customer_document_type ||
+                                (order.document_type === 'factura'
+                                    ? 'RUC'
+                                    : 'DNI')
+                            ).toUpperCase()
+                        }}:</strong
+                    >
+                    {{ order.customer_document_number }}
+                </p>
+                <p
+                    v-if="
+                        order.customer_legal_name &&
+                        order.customer_legal_name !== order.customer_name
+                    "
+                >
+                    <strong>Razón Social:</strong>
+                    {{ order.customer_legal_name }}
+                </p>
+                <p><strong>Teléfono:</strong> {{ order.phone }}</p>
+                <p>
+                    <strong>Entrega:</strong>
+                    {{
+                        order.delivery_method === 'pickup'
+                            ? 'Recojo en tienda'
+                            : order.address
+                    }}
+                </p>
+            </div>
+
+            <table
+                class="my-2 w-full border-b border-dashed border-black pb-2 text-[11px]"
+            >
+                <thead>
+                    <tr class="border-b border-black">
+                        <th class="py-1 text-left">Cant. / Item</th>
+                        <th class="py-1 text-right">P.U.</th>
+                        <th class="py-1 text-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="l in lines" :key="l.sku">
+                        <td class="py-1">
+                            <div>{{ l.quantity }} × {{ l.name }}</div>
+                            <div class="text-[9px] text-slate-500">
+                                {{ l.sku }}
+                            </div>
+                        </td>
+                        <td class="py-1 text-right align-top">
+                            {{ money(l.unit_minor) }}
+                        </td>
+                        <td class="py-1 text-right align-top">
+                            {{ money(l.total_minor) }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div
+                class="space-y-1 border-b border-dashed border-black pb-2 text-[11px]"
+            >
+                <div class="flex justify-between">
+                    <span>Op. Gravadas:</span>
+                    <span>{{ money(taxBase) }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>I.G.V. (18%):</span>
+                    <span>{{ money(taxIgv) }}</span>
+                </div>
+                <div
+                    v-if="order.discount_minor > 0"
+                    class="flex justify-between"
+                >
+                    <span>Descuento:</span>
+                    <span>-{{ money(order.discount_minor) }}</span>
+                </div>
+                <div
+                    v-if="order.delivery_minor > 0"
+                    class="flex justify-between"
+                >
+                    <span>Entrega:</span>
+                    <span>{{ money(order.delivery_minor) }}</span>
+                </div>
+                <div
+                    class="flex justify-between border-t border-black pt-1 text-sm font-bold"
+                >
+                    <span>TOTAL:</span>
+                    <span>{{ money(order.total_minor) }}</span>
+                </div>
+                <div
+                    v-if="Number(order.cash_received_minor) > 0"
+                    class="flex justify-between pt-1 text-[10px]"
+                >
+                    <span
+                        >Efectivo:
+                        {{ money(Number(order.cash_received_minor)) }}</span
+                    >
+                    <span>Vuelto: {{ money(Number(order.change_minor)) }}</span>
+                </div>
+            </div>
+
+            <div class="pt-3 text-center text-[10px]">
+                <p
+                    v-if="
+                        order.document_type === 'factura' ||
+                        order.document_type === 'boleta'
+                    "
+                >
+                    Representación impresa del Comprobante de Pago Electrónico.
+                </p>
+                <p v-else>NOTA DE VENTA / TICKET DE CONTROL INTERNO</p>
+                <p class="mt-1 font-bold">¡Gracias por su preferencia!</p>
+            </div>
+        </div>
         <div class="print:hidden">
             <section
                 v-if="!managing && trackingToken"
