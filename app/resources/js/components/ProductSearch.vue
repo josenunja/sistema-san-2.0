@@ -107,7 +107,7 @@ function select(product: Product) {
                     autocomplete="off"
                     maxlength="100"
                     class="w-full rounded-lg border p-3 pr-10 focus:ring-2 focus:ring-emerald-500"
-                    placeholder="Escanear código de barras o escribir nombre/SKU"
+                    placeholder="Nombre, SKU o código de barras"
                     @keydown.enter.prevent="handleEnter"
                 />
                 <span
