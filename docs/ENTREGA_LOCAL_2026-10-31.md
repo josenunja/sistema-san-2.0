@@ -1,5 +1,7 @@
 # Entrega local comercial — 31/10/2026
 
+El usuario autorizó publicar el cierre funcional en GitHub después de su preparación local. El código está en `main` (494f920); el ZIP instalable y su checksum corresponden a [esta entrega](https://github.com/josenunja/sistema-san-2.0/releases/tag/entrega-local-2026-10-31-494f920). El registro de preparación descrito al final corresponde al momento anterior a esa autorización.
+
 Entrega preparada para pago único por negocio, con el alcance de OFERTA_COMERCIAL.md. Programa local, una empresa por copia, cantidades enteras, notas de venta internas y pagos digitales manuales. No incluye dominio, hosting, correo real ni emisión fiscal.
 
 ## Paquete
