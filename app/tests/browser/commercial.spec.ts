@@ -95,6 +95,29 @@ test('propietario: contraseña, MFA, producto mínimo y gestor de fotos', async 
     await expect(
         page.getByText('Aún no hay fotos.', { exact: false }),
     ).toBeVisible();
+    const png = await page.evaluate(() => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 8;
+        canvas.height = 8;
+        const drawing = canvas.getContext('2d')!;
+        drawing.fillStyle = '#257452';
+        drawing.fillRect(0, 0, 8, 8);
+        return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await page.getByLabel('Agregar foto', { exact: false }).setInputFiles({
+        name: 'producto-sintetico.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from(png, 'base64'),
+    });
+    await page.getByRole('button', { name: 'Subir foto', exact: true }).click();
+    await expect(page.getByLabel('Descripción accesible')).toBeVisible();
+    await page
+        .getByLabel('Descripción accesible')
+        .fill('Foto sintética de aceptación');
+    await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+    await expect(
+        page.getByAltText('Foto sintética de aceptación'),
+    ).toBeVisible();
 });
 
 test('propietario: las pantallas operativas y la búsqueda se cargan sin errores', async ({

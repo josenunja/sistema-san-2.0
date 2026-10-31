@@ -501,8 +501,8 @@ function printTicket() {
                     {{ fiscalTitle }} · {{ fiscalCorrelative }}
                 </p>
                 <p class="mt-1 text-slate-500">
-                    Comprobante registrado en el sistema. Emisión y control
-                    interno comercial según normativa tributaria.
+                    Documento interno sin aceptación fiscal. No acredita emisión
+                    electrónica ante SUNAT.
                 </p>
             </template>
             <template v-else>

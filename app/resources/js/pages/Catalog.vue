@@ -938,7 +938,7 @@ const themeEyebrow = computed(() =>
                 class="grid gap-8"
                 :class="!managing ? 'xl:grid-cols-[1fr_360px]' : ''"
             >
-                <section>
+                <section class="min-w-0">
                     <p
                         v-if="!products.data.length"
                         class="rounded-2xl border border-dashed bg-white p-12 text-center text-slate-400"
@@ -1058,7 +1058,7 @@ const themeEyebrow = computed(() =>
                     </div>
                     <nav
                         aria-label="Paginación"
-                        class="catalog-pagination mt-7 flex gap-3"
+                        class="catalog-pagination mt-7 flex flex-wrap gap-3"
                     >
                         <template v-for="(l, i) in products.links" :key="i"
                             ><Link

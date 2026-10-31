@@ -25,6 +25,8 @@ class FiscalReceiptTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Exercise legacy internal document types explicitly, never a real provider.
+        config(['business.internal_documents_only' => false]);
         if (DB::connection()->getDatabaseName() !== 'sas_san_test') {
             throw new \RuntimeException('Se requiere la base de datos de prueba sas_san_test.');
         }
@@ -91,7 +93,7 @@ class FiscalReceiptTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_emitir_boleta_de_venta_con_correlativo_y_desglose_igv(): void
+    public function test_registrar_boleta_interna_con_correlativo_y_desglose_igv(): void
     {
         $this->actingAs($this->owner);
 
@@ -245,6 +247,19 @@ class FiscalReceiptTest extends TestCase
         $this->assertSame('ticket', $ticket->document_type);
         $this->assertSame('T001', $ticket->document_series);
         $this->assertSame(1, (int) $ticket->document_number);
+    }
+
+    public function test_local_delivery_rejects_boletas_before_creating_orders(): void
+    {
+        config(['business.internal_documents_only' => true]);
+        $this->actingAs($this->owner)->post('/gestion/comercial-andina/operacion', [
+            'action' => 'pos_sale', 'key' => (string) Str::uuid(), 'warehouse_id' => $this->warehouse,
+            'cash_session_id' => $this->cashSession, 'customer_name' => 'Comprador sintético', 'phone' => '900000000',
+            'delivery_method' => 'pickup', 'document_type' => 'boleta', 'cash_minor' => 11800,
+            'items' => [['product_id' => $this->product, 'quantity' => 1]],
+        ])->assertRedirect()->assertSessionHasErrors('operation');
+        $this->assertSame(0, DB::table('orders')->count());
+        $this->assertSame(0, DB::table('fiscal_series_sequences')->count());
     }
 
     public function test_boleta_mayor_a_700_soles_exige_identificacion_del_cliente(): void

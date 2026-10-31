@@ -4,6 +4,8 @@ Cada negocio usa una instalación y recursos propios. La modalidad de cobro (ins
 
 ## Venta de instalación local
 
+La entrega Windows preparada con `preparar-entrega-local.ps1` incluye binarios y dependencias sin datos ni secretos. En esa entrega ejecutar `armar-entorno-portatil.ps1`, luego `iniciar.ps1` y completar `/instalacion`; elegir puertos libres si hay otras instalaciones en el equipo. Este camino no requiere Docker/Node en el equipo cliente. Cada carpeta crea su propio clúster y contraseñas separadas para `sas_owner` y `sas_runtime`. La restauración de cliente crea una base nueva y configuración independiente: consultar GUIA_RESPALDOS_Y_RECUPERACION.md. El recorrido Docker de los puntos siguientes se conserva como alternativa técnica; no confundirlo con el paquete nativo.
+
 1. Preparar una carpeta nueva con preparar-copia.ps1 y un puerto libre. No entregar una carpeta que ya contenga .env, datos o claves de otro negocio.
 2. En Windows con Docker sano, Node 22 y npm: ejecutar iniciar.ps1 -Modo Docker -Compilar dentro de la copia. Se crean app, PostgreSQL, scheduler y worker. El servidor se enlaza a 127.0.0.1; no habilita acceso público ni a otros equipos.
 3. El propietario completa /instalacion con su contraseña y activa MFA. No hay cuenta universal. Cargar productos, stock y costos; probar una venta, su cobro y el arqueo.

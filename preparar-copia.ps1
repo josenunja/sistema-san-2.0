@@ -18,7 +18,8 @@ $appTarget=Join-Path $target 'app'
 if($LASTEXITCODE -ge 8){throw 'No se pudo preparar la copia de código.'}
 Copy-Item -LiteralPath (Join-Path $root 'docs') -Destination $target -Recurse
 if(Test-Path -LiteralPath (Join-Path $root '.github')){Copy-Item -LiteralPath (Join-Path $root '.github') -Destination $target -Recurse}
-foreach($file in @('README.md','AGENTS.md','.gitignore','iniciar.ps1','verificar.ps1','preparar-copia.ps1','preparar-produccion.ps1','respaldo.ps1','probar-restauracion.ps1','aceptar-en-navegador.ps1','ver-accesos-demo.ps1')){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $target}
+foreach($folder in @('scripts','licenses')){if(Test-Path -LiteralPath (Join-Path $root $folder)){Copy-Item -LiteralPath (Join-Path $root $folder) -Destination $target -Recurse}}
+foreach($file in Get-ChildItem -LiteralPath $root -Filter '*.ps1' -File){Copy-Item -LiteralPath $file.FullName -Destination $target}
 foreach($dir in @('storage/app/private','storage/framework/cache/data','storage/framework/sessions','storage/framework/views','storage/logs','bootstrap/cache')){New-Item -ItemType Directory -Force -Path (Join-Path $appTarget $dir) | Out-Null}
 $instanceTag=[guid]::NewGuid().ToString('N').Substring(0,8)
 $projectName='negocio-'+$Identificador+'-'+$instanceTag

@@ -7,18 +7,29 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class EmergencyResetCommand extends Command
 {
     protected $signature = 'auth:emergency-reset 
                             {email? : Correo electrónico del usuario} 
                             {--clear-2fa : Restablecer y desactivar autenticación de dos factores (MFA)} 
-                            {--new-password= : Especificar nueva contraseña directamente}';
+                            ';
 
     protected $description = 'Restablecimiento de emergencia de credenciales y MFA para administradores locales';
 
     public function handle(): int
     {
+        if (! app()->environment('native', 'local', 'testing') || ! in_array(config('database.connections.pgsql.host'), ['127.0.0.1', 'localhost'], true)) {
+            $this->error('La recuperación de consola solo está disponible en instalaciones locales.');
+
+            return self::FAILURE;
+        }
+        if (! $this->input->isInteractive()) {
+            $this->error('Se requiere una consola interactiva: la contraseña no se admite por argumentos.');
+
+            return self::FAILURE;
+        }
         $this->warn('===========================================================');
         $this->warn('SAS SAN - RESTABLECIMIENTO DE EMERGENCIA DE ACCESO LOCAL');
         $this->warn('===========================================================');
@@ -50,15 +61,15 @@ class EmergencyResetCommand extends Command
             return self::FAILURE;
         }
 
-        $newPassword = $this->option('new-password');
-        if (! $newPassword) {
-            $newPassword = $this->secret('Ingrese la nueva contraseña (mínimo 12 caracteres)');
-            $confirmation = $this->secret('Confirme la nueva contraseña');
-            if ($newPassword !== $confirmation) {
-                $this->error('Las contraseñas no coinciden.');
+        if (! $this->confirm('¿Confirma que está autorizado para recuperar esta cuenta en este equipo?', false)) {
+            return self::FAILURE;
+        }
+        $newPassword = $this->secret('Ingrese la nueva contraseña (mínimo 12 caracteres)');
+        $confirmation = $this->secret('Confirme la nueva contraseña');
+        if ($newPassword !== $confirmation) {
+            $this->error('Las contraseñas no coinciden.');
 
-                return self::FAILURE;
-            }
+            return self::FAILURE;
         }
 
         if (strlen((string) $newPassword) < 12) {
@@ -69,12 +80,16 @@ class EmergencyResetCommand extends Command
 
         $clear2fa = $this->option('clear-2fa');
         if (! $clear2fa && $user->two_factor_confirmed_at) {
-            $clear2fa = $this->confirm('¿Desea también restablecer y desactivar el Segundo Factor (MFA) para este usuario?', true);
+            $clear2fa = $this->confirm('¿Desea también restablecer y desactivar el Segundo Factor (MFA) para este usuario?', false);
+        }
+        if ($clear2fa && ! $this->confirm('¿Confirma que debe volver a configurar MFA personalmente después de recuperar el acceso?', false)) {
+            return self::FAILURE;
         }
 
         DB::transaction(function () use ($user, $newPassword, $clear2fa) {
             $updates = [
                 'password' => Hash::make($newPassword),
+                'remember_token' => Str::random(60),
             ];
 
             if ($clear2fa) {
@@ -84,6 +99,7 @@ class EmergencyResetCommand extends Command
             }
 
             $user->forceFill($updates)->save();
+            DB::table('sessions')->where('user_id', $user->id)->delete();
 
             // Auditoría interna
             Log::warning("EMERGENCY_ACCESS_RESET: Acceso restablecido vía consola para el usuario {$user->email} (MFA limpiado: ".($clear2fa ? 'SI' : 'NO').')');

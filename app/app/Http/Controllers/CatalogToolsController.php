@@ -152,6 +152,6 @@ class CatalogToolsController extends Controller
         abort_unless($file instanceof UploadedFile, 422);
         app(ProductImages::class)->store($tenant, $productId, $file);
 
-        return back()->with('success', 'Foto procesada y guardada sin metadatos originales.');
+        return redirect()->route('manage.products.media', ['slug' => $slug, 'productId' => $productId])->with('success', 'Foto procesada y guardada sin metadatos originales.');
     }
 }

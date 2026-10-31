@@ -44,7 +44,7 @@ class CatalogController extends Controller
             ->when($audience !== null, fn ($q) => $q->where('audience', $audience))
             ->when($section === 'trends', fn ($q) => $q->where('trending', true))
             ->when($section === 'promotions', fn ($q) => app(ScheduledPrices::class)->promotions($q))
-            ->orderBy('name')->paginate(20, ['id', 'sku', 'name', 'price_minor', 'compare_at_minor', 'published', 'archived', 'barcode', 'minimum_stock', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'description', DB::raw('(image_path IS NOT NULL) AS has_image')])->withQueryString();
+            ->when($managing, fn ($q) => $q->orderByDesc('id'), fn ($q) => $q->orderBy('name'))->paginate(20, ['id', 'sku', 'name', 'price_minor', 'compare_at_minor', 'published', 'archived', 'barcode', 'minimum_stock', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'description', DB::raw('(image_path IS NOT NULL) AS has_image')])->withQueryString();
         if (! $managing) {
             app(ScheduledPrices::class)->decorate((int) $tenant->id, $products->getCollection(), 'web');
         }
@@ -148,7 +148,7 @@ class CatalogController extends Controller
             app(Commerce::class)->audit($tenant->id, 'product_created');
         });
 
-        return back()->with('success', 'Producto guardado. Las existencias se registran desde Inventario por el propietario o el responsable de almacén.');
+        return redirect()->route('manage.catalog', ['slug' => $tenant->slug])->with('success', 'Producto guardado. Las existencias se registran desde Inventario por el propietario o el responsable de almacén.');
     }
 
     public function product(Request $request, string $slug, int $productId): Response

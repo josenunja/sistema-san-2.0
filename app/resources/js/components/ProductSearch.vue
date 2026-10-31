@@ -16,10 +16,7 @@ const loading = ref(false);
 let generation = 0;
 let timer: ReturnType<typeof setTimeout>;
 
-async function performSearch(
-    query: string,
-    isInstant: boolean = false,
-): Promise<Product[]> {
+async function performSearch(query: string): Promise<Product[]> {
     if (!query.trim()) {
         results.value = [];
         return [];
@@ -54,6 +51,9 @@ async function performSearch(
 
 watch(term, (value) => {
     clearTimeout(timer);
+    ++generation;
+    results.value = [];
+    loading.value = false;
     if (!value.trim()) {
         results.value = [];
         return;
@@ -68,14 +68,8 @@ async function handleEnter() {
     const query = term.value.trim();
     if (!query) return;
 
-    // Si ya hay un único resultado visible, seleccionarlo
-    if (results.value.length === 1) {
-        select(results.value[0]);
-        return;
-    }
-
     // Búsqueda inmediata (típica de lector de código de barras)
-    const rows = await performSearch(query, true);
+    const rows = await performSearch(query);
     if (rows.length === 1) {
         select(rows[0]);
     } else if (rows.length > 1) {

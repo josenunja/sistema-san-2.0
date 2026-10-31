@@ -1070,6 +1070,7 @@ const reportCards = [
 
                     <!-- Comprobante Fiscal (Boleta / Factura / Nota de venta) -->
                     <div
+                        v-if="!data.internalDocumentsOnly"
                         class="rounded-xl border border-slate-200 bg-slate-50 p-4"
                     >
                         <label

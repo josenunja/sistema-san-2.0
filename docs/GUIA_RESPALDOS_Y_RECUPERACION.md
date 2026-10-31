@@ -1,75 +1,52 @@
-# Guía de Respaldos y Recuperación ante Desastres — SAS SAN
+# Respaldos y recuperación local
 
-Esta guía describe el funcionamiento, automatización y procedimiento de recuperación de copias de seguridad para clientes de **SAS SAN**.
+La entrega local completa incluye PHP, PostgreSQL y dependencias. Los comandos se ejecutan desde la carpeta instalada. Nunca compartir configuración, claves ni respaldos con otra empresa. Ninguna herramienta de esta guía borra la base activa para restaurarla.
 
----
-
-## 1. Características del Sistema de Respaldo
-
-* **Cifrado de grado militar:** Las copias se empaquetan en archivos con extensión `.ssbk` cifrados mediante **Libsodium (XChaCha20-Poly1305)** con autenticación integrada. Si alguien roba o accede al archivo de respaldo, no puede leer los datos ni los clientes sin la clave `backup.key`.
-* **Contenido completo en cada copia:**
-  1. Base de datos completa (PostgreSQL) con todas las tablas, saldos, ventas, compras, caja y catálogo.
-  2. Archivos privados (`storage/app/private`): comprobantes de pago adjuntos, documentos e imágenes privadas.
-  3. Archivo de configuración (`config.env`).
-* **Protección contra saturación de disco:** Rotación automática de 30 días (las copias con más de 30 días se eliminan de forma automática para no llenar la memoria del equipo).
-* **Supervisión visible:** Se genera y actualiza un archivo `ESTADO_ULTIMO_RESPALDO.txt` en la raíz del sistema y en la carpeta de respaldos, con fecha, hora, tamaño y estado (`EXITOSO` o `ERROR`).
-
----
-
-## 2. Automatización con Windows (Sin intervención diaria)
-
-Para que el sistema se respalde automáticamente todos los días al cierre de turno (por ejemplo, a las 10:00 PM):
-
-1. Abrir **PowerShell** en la carpeta del sistema.
-2. Ejecutar:
+## Crear y verificar copias
 
 ```powershell
-.\programar-respaldo.ps1 -Hora "22:00"
+.\respaldo-cliente.ps1 -Modo Nativo
+.\respaldo-cliente.ps1 -Modo Nativo -CopiaSecundaria 'E:\RespaldosNegocio'
 ```
 
-### Copia automática hacia memoria USB o Nube (Google Drive / OneDrive)
-Si el cliente tiene conectada una memoria USB (por ejemplo en `E:\Respaldos_SAS`) o una carpeta de Google Drive sincronizada en su computadora:
+Se usa `app/.env.native` en modo nativo, aunque exista también `.env` de Docker. El volcado completo se realiza como `sas_owner`, con su contraseña privada; la web continúa como `sas_runtime`. El paquete `.ssbk` contiene base, configuración y archivos privados, con un manifiesto de tamaños/SHA-256 y cifrado autenticado. `backup.key` se conserva fuera del paquete, en `claves/` o en la ubicación privada existente de `.runtime/`.
+
+`ESTADO_ULTIMO_RESPALDO.txt` contiene JSON con fecha UTC, `resultado`, `archivo`, `secundaria` y `detalle`. Un fallo al copiar al segundo destino produce `ERROR` y salida distinta de cero; la copia principal que ya se generó se conserva. La herramienta rechaza ejecuciones concurrentes en el mismo destino. No elimina respaldos antiguos: revise espacio y retención antes de retirar copias manualmente.
+
+Una segunda carpeta del mismo disco sirve para probar la copia, pero no protege frente a pérdida de ese disco. Utilice un disco separado o un servicio de almacenamiento contratado y verifique su recuperación. Conserve una copia protegida de `backup.key` fuera del equipo, separada de los respaldos; perderla impide descifrarlos. APP_KEY está dentro de la configuración cifrada y es necesaria para recuperar campos cifrados de la aplicación.
+
+## Programación diaria en Windows
 
 ```powershell
-.\programar-respaldo.ps1 -Hora "22:00" -CopiaSecundaria "E:\Respaldos_SAS"
+.\programar-respaldo.ps1 -Modo Nativo -Hora '22:00' -CopiaSecundaria 'E:\RespaldosNegocio'
 ```
 
-El script guardará la copia principal en la laptop y enviará una copia idéntica a la memoria USB o nube externa.
+Cada instalación recibe un nombre de tarea diferente. Usa la hora configurada en Windows, permisos del usuario actual y sesión interactiva: el equipo debe estar encendido, el usuario conectado y el destino disponible. Windows intenta ejecutar después una tarea omitida cuando vuelve a estar disponible. El resultado de la tarea y el archivo de estado deben revisarse; configurar una tarea no garantiza que se ejecutó.
 
-Para eliminar la tarea programada si fuera necesario:
 ```powershell
 .\programar-respaldo.ps1 -Eliminar
 ```
 
----
+Solo retira la tarea perteneciente a esta instalación. No borra archivos. Puede exportar la definición sin registrar una tarea con `-SoloXml`.
 
-## 3. Respaldo Manual Inmediato
+## Recuperar sin sobrescribir
 
-Para realizar una copia en cualquier momento (por ejemplo, antes de actualizar el sistema o hacer un cambio mayor):
+En la instalación destino, primero preparar el entorno y colocar la clave original en una ubicación privada. Después:
 
 ```powershell
-.\respaldo-cliente.ps1
+.\restaurar-cliente.ps1 -Modo Nativo -ArchivoSsbk 'E:\RespaldosNegocio\archivo.ssbk' -KeyPath 'E:\Claves\backup.key' -Puerto 8010
 ```
 
-O enviándola directamente a una memoria externa:
+La herramienta autentica el cifrado y comprueba las rutas y todos los archivos del manifiesto antes de crear una base. Crea `sas_san_restore_<identificador>`, restaura con `--exit-on-error` y guarda los archivos y `config.env` en `.runtime/recuperaciones/<identificador>/`. La base, archivos y configuración activos se conservan. Si el proceso falla, no se anuncia éxito; una base parcial nueva se conserva para diagnóstico, sin sustituir la anterior.
+
+Para revisar la recuperación:
+
 ```powershell
-.\respaldo-cliente.ps1 -CopiaSecundaria "D:\Mi_USB\Respaldos"
+.\iniciar.ps1 -Configuracion 'RUTA_MOSTRADA\config.env'
 ```
 
----
+La configuración recuperada usa las credenciales del runtime destino, conserva APP_KEY del respaldo, dirige el almacenamiento privado a la recuperación y fuerza correo por log. Compruebe acceso/MFA, productos y fotos, saldos, ventas, stock, caja y permisos. El soporte registra la aceptación y define qué configuración se usará en adelante; no copie a ciegas archivos de otra empresa sobre una instalación activa. Para respaldar la recuperación aceptada, pase la misma ruta con `-Configuracion` también al respaldo y a su tarea.
 
-## 4. Procedimiento de Recuperación ante Desastres (Laptop Rota / Robada)
+Los respaldos antiguos sin manifiesto v2 requieren las herramientas anteriores documentadas; no se aceptan silenciosamente como respaldos nuevos. El modo Docker requiere PHP local para cifrar/descifrar y la configuración local Compose documentada. La aceptación comercial de esta entrega se concentra en el modo nativo Windows.
 
-Si la computadora principal se daña, se formatea o se pierde:
-
-1. **Instalar SAS SAN en la nueva computadora** (siguiendo `docs/INSTALACION_REPOSITORIO.md`).
-2. **Copiar el archivo de clave:** Colocar el archivo `backup.key` en la carpeta `claves/` de la nueva instalación. *(Regla de oro: Guarde siempre una copia de `backup.key` en su correo personal o en un pendrive guardado en un lugar seguro).*
-3. **Ejecutar la restauración:**
-   Abrir PowerShell y ejecutar indicando la ruta del archivo `.ssbk`:
-
-   ```powershell
-   .\restaurar-cliente.ps1 -ArchivoSsbk "E:\Respaldos_SAS\sas_san-20261030-220000-abc123.ssbk"
-   ```
-
-4. Confirmar la operación escribiendo `SI`.
-5. El sistema descifrará la copia, restaurará la base de datos PostgreSQL, restablecerá las fotos y documentos privados, y dejará el sistema exactamente en el estado en que se encontraba al momento de esa copia.
+Realizar la copia sin operaciones en curso mejora la coherencia entre el volcado transaccional de PostgreSQL y los archivos. No se ofrece WAL/PITR ni un tiempo garantizado de recuperación. Las ventas todavía pendientes en un navegador desconectado requieren su propia sincronización/recuperación; no están en el respaldo del servidor.

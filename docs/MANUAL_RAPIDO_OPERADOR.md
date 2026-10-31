@@ -1,74 +1,44 @@
-# Manual Rápido del Operador — SAS SAN (Guía de Bolsillo)
+# Manual rápido del operador
 
-Guía paso a paso para el uso diario del cajero y administrador de la tienda.
+## Primera instalación y acceso
 
----
+En la entrega local completa ejecutar `armar-entorno-portatil.ps1` y después `iniciar.ps1`. Abrir la dirección mostrada y completar `/instalacion`. El propietario elige su contraseña y configura MFA en Seguridad; guardar sus códigos de recuperación en privado. No existen cuentas ni contraseñas universales.
 
-## 1. Inicio de Jornada: Apertura de Caja
+Desde el catálogo público se puede explorar la tienda sin acceso de personal. El comprador tiene una cuenta separada. El propietario administra empleados y permisos; un usuario de catálogo puede cargar productos sin recibir acceso a caja.
 
-1. Abre tu navegador e ingresa a: `http://localhost:8000` (o el acceso directo en el Escritorio).
-2. Inicia sesión con tu correo y contraseña.
-3. Ve a **Operaciones → Caja**.
-4. Ingresa el **Fondo Inicial de Efectivo** (el sencillo con el que arranca la caja, ej. `S/ 100.00`).
-5. Clic en **Abrir Caja**. ¡Listo para vender!
+## Cargar productos
 
----
+En Catálogo, ingresar nombre y precio; puede añadirse foto y el sistema genera código si no se indicó uno. Las variantes con talla/color usan SKU independientes. En Gestionar fotos se puede subir, ordenar, describir y elegir portada. El precio se introduce en soles; internamente se conserva en céntimos.
 
-## 2. Ventas en el POS (Punto de Venta)
+Crear el producto no agrega existencias: recibir mercadería desde Inventario o Compras indicando almacén, unidades y costo. La carga CSV permite revisar antes de confirmar; use la plantilla disponible. Antes de importar archivos grandes, guardar respaldo.
 
-### Con Lector de Código de Barras
-1. Con el cursor en el buscador de productos, apunta el lector láser a la etiqueta del producto.
-2. El sistema lo detectará automáticamente y lo sumará a la cuenta de la venta.
+## Vender y cobrar
 
-### Búsqueda Manual
-1. Escribe el nombre o código del producto (ej. `Polera` o `POL-01`).
-2. Presiona `Enter` o haz clic sobre el resultado para agregarlo.
+1. Abrir una caja personal en el almacén autorizado e indicar el efectivo inicial.
+2. Entrar en POS y buscar por nombre/SKU o leer un código previamente guardado en el producto. El lector debe actuar como teclado y enviar Enter. Revisar producto y cantidad antes de cobrar.
+3. En efectivo, distinguir el importe aplicado a la venta del dinero recibido: si la venta es S/35 y se recibe S/50, el vuelto es S/15.
+4. Yape/BCP se registran manualmente. El propietario verifica en su cuenta el ingreso real y registra referencia; una captura o un mensaje no acreditan por sí solos el pago. El cajero no puede autoaprobar el componente digital de un pago mixto.
+5. El crédito requiere cliente identificado y límite autorizado; los abonos se registran sobre el pedido correspondiente.
+6. Revisar la confirmación y abrir el documento interno para imprimir o reimprimir. La impresión no constituye una venta nueva. Se debe probar la impresora y su formato en el equipo del cliente.
 
----
+Esta entrega utiliza notas de venta internas. No emite boletas/facturas electrónicas ante SUNAT ni procesa pagos bancarios automáticamente.
 
-## 3. Tipos de Cobro y Vuelto
+## Devoluciones y cierre
 
-* **Cobro en Efectivo con vuelto:**
-  * Si el total es `S/ 35.00` y el cliente paga con un billete de `S/ 50.00`:
-  * En el campo *Efectivo recibido* escribe `50.00`.
-  * El sistema te mostrará automáticamente en pantalla en color verde: **Vuelto: S/ 15.00**.
-  * Clic en **Cobrar y Confirmar**.
-* **Cobro con Yape / Plin / Transferencia:**
-  * Solicita al cliente que te muestre la constancia en su celular.
-  * Verifica el monto y el nombre de destino.
-  * Ingresa los últimos 6 dígitos de la constancia/operación en el campo de referencia.
-* **Pago Mixto (Parte efectivo, parte Yape):**
-  * Ingresa cuánto dinero deja en efectivo y cuánto transfiere por Yape. El sistema validará que la suma sea exactamente el total de la compra.
+En el pedido, el propietario registra la devolución física/comercial con motivo y condición. La devolución al stock y el reembolso de dinero son operaciones separadas: solo registrar el reembolso después de ejecutarlo realmente. Las ventas confirmadas no se eliminan.
 
----
+Al cerrar el turno contar el efectivo físico y registrar el arqueo de la caja propia. Una venta cobrada en otra caja no pertenece a ese turno. La reapertura requiere propietario, contraseña reciente y motivo auditado. Revisar diferencias y pendientes antes de cerrar el negocio.
 
-## 4. Fin de Jornada: Arqueo y Cierre de Caja
+## Reinicio y trabajo sin conexión
 
-Al finalizar el turno o cerrar la tienda:
+`iniciar.ps1` arranca la base y los servicios de esta instalación; `detener.ps1` los detiene sin borrar ventas. Antes de apagar, guardar operaciones y conciliar pendientes. `detener.ps1 -DetenerBase` también detiene el clúster de esa instalación.
 
-1. Ve a **Operaciones → Caja**.
-2. Cuenta físicamente todo el dinero en efectivo que tienes en el cajón (billetes y monedas).
-3. Escribe ese monto en el campo **Efectivo Físico Contado**.
-4. Haz clic en **Cerrar Turno de Caja**.
-5. El sistema generará el resumen:
-   * Total ventas en efectivo.
-   * Total ventas digitales (Yape/banco).
-   * Diferencia (Sobrante / Faltante si hubiera).
-6. Imprime el reporte de cierre para tu control si lo necesitas.
+Las ventas confirmadas quedan en PostgreSQL; comprobar cualquier operación interrumpida antes de reintentar. Una pestaña abierta o un formulario sin confirmar no equivalen a una venta guardada.
 
----
+El modo sin conexión necesita una asignación previa de existencias, un dispositivo aceptado y su PIN local. Sincronizar al regresar la conexión y revisar los pendientes. No borrar datos del navegador ni perder su PIN con ventas pendientes; el respaldo del servidor no incluye esas ventas aún no sincronizadas.
 
-## 5. Preguntas Frecuentes y Contingencias
+## Respaldo y recuperación
 
-### ¿Qué pasa si se corta la luz o se apaga la computadora?
-1. Enciende la computadora nuevamente.
-2. Abre el sistema: tu sesión de caja seguirá exactamente donde la dejaste.
-3. El sistema no pierde ventas registradas ni cálculos de stock gracias a su base de datos transaccional.
+Consultar `GUIA_RESPALDOS_Y_RECUPERACION.md`. Revisar la fecha y `resultado` en `ESTADO_ULTIMO_RESPALDO.txt` y comprobar el segundo destino. `EXITOSO` acredita esa ejecución; no garantiza protección frente a cualquier pérdida. Ensayar una restauración y conservar backup.key por separado.
 
-### ¿Cómo sé si el respaldo automático de seguridad se hizo bien?
-1. En la carpeta del sistema encontrarás un archivo llamado `ESTADO_ULTIMO_RESPALDO.txt`.
-2. Ábrelo con doble clic. Si dice **Resultado: EXITOSO**, tus datos están 100% seguros y respaldados.
-3. Si conectas una memoria USB, asegúrate de mantenerla conectada a la hora configurada (ej. 10:00 PM) para que reciba la copia externa.
-
-### ¿Olvidé mi contraseña o perdí mi celular con el 2FA?
-* Comunícate con el soporte técnico o ejecuta el asistente `recuperar-acceso-local.ps1` en la computadora principal con permisos de Administrador para asignar una clave nueva.
+Para recuperar acceso sin correo, el operador autorizado utiliza `recuperar-acceso-local.ps1` en el equipo. La contraseña se solicita de forma oculta y se cierran las sesiones previas. MFA se conserva por defecto; su limpieza exige confirmación y una nueva configuración personal. Los correos reales de invitación/recuperación necesitan un servicio configurado y probado por separado.

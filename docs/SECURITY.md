@@ -1,5 +1,7 @@
 # Seguridad: implementación y límites
 
+Actualización local del 31/10/2026: los dos scripts antiguos de datos/MFA terminan sin iniciar Laravel ni conectar a la base. La recuperación por consola solo admite entorno local, confirmación y contraseña oculta; no acepta contraseña por argumento, rota remember_token y revoca sesiones, conservando MFA salvo confirmación expresa. Los paquetes locales nuevos usan contraseñas SQL diferentes y runtime NOSUPERUSER/NOBYPASSRLS. El respaldo v2 autentica el paquete y su manifiesto; la restauración nunca limpia una base activa, crea una nueva y valida errores. Un fallo de la segunda copia es ERROR. No se eliminan respaldos automáticamente. Los recursos de imagen no sustituyen la URL de página previa de la sesión. Las herramientas no equivalen a almacenamiento externo contratado ni a una garantía de recuperación de ventas aún pendientes en el navegador. El alcance de entrega usa solo notas internas por defecto (`BUSINESS_INTERNAL_DOCUMENTS_ONLY=true`); los tipos heredados no acreditan aceptación fiscal.
+
 El entorno entregado es local. No se certifica ASVS nivel 2 ni aptitud productiva.
 
 | Control | Implementación / evidencia | Límite |

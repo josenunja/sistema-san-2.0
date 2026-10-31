@@ -190,7 +190,7 @@ class JornadaCompletaTest extends TestCase
             'warehouse_id' => $this->warehouse,
             'opening_minor' => 10000, // S/ 100.00
         ]);
-        $cashOpenResponse->assertSessionHasNoErrors();
+        $cashOpenResponse->assertRedirect()->assertSessionHasNoErrors();
 
         $cashSession = DB::table('cash_sessions')
             ->where('tenant_id', $this->tenant)
@@ -219,7 +219,8 @@ class JornadaCompletaTest extends TestCase
             ],
         ];
 
-        $this->post('/gestion/boutique-elegancia/operacion', $sale1Data)->assertSessionHasNoErrors();
+        $this->post('/gestion/boutique-elegancia/operacion', $sale1Data)->assertRedirect()->assertSessionHasNoErrors();
+        $this->post('/gestion/boutique-elegancia/operacion', $sale1Data)->assertRedirect()->assertSessionHasNoErrors();
 
         // Verificaciones Venta 1
         $this->assertSame(1, DB::table('orders')->count());
@@ -271,7 +272,7 @@ class JornadaCompletaTest extends TestCase
             'opened_at' => now(),
         ]);
         $mixedData['cash_session_id'] = $ownerCash;
-        $this->post('/gestion/boutique-elegancia/operacion', $mixedData)->assertSessionHasNoErrors();
+        $this->post('/gestion/boutique-elegancia/operacion', $mixedData)->assertRedirect()->assertSessionHasNoErrors();
 
         // Verificaciones Venta 2
         $this->assertSame(2, DB::table('orders')->count());
@@ -305,7 +306,7 @@ class JornadaCompletaTest extends TestCase
             ],
         ];
 
-        $this->post('/gestion/boutique-elegancia/operacion', $creditSaleData)->assertSessionHasNoErrors();
+        $this->post('/gestion/boutique-elegancia/operacion', $creditSaleData)->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame(3, DB::table('orders')->count());
 
         // Stock de polera ahora es 8
@@ -313,22 +314,38 @@ class JornadaCompletaTest extends TestCase
 
         // Abono posterior de S/ 20.00 en efectivo a la deuda
         $abonoData = [
-            'action' => 'payment_on_account',
+            'action' => 'payment',
             'key' => (string) Str::uuid(),
-            'customer_id' => $customer,
+            'order_id' => DB::table('orders')->where('customer_id', $customer)->value('id'),
             'cash_session_id' => $cashSession->id,
             'amount_minor' => 2000,
             'method' => 'cash',
         ];
-        $this->post('/gestion/boutique-elegancia/operacion', $abonoData)->assertSessionHasNoErrors();
+        $this->post('/gestion/boutique-elegancia/operacion', $abonoData)->assertRedirect()->assertSessionHasNoErrors();
+
+        // A physical return and an actual cash refund are distinct audited actions.
+        $this->actingAs($this->owner)->withSession(['auth.password_confirmed_at' => time()]);
+        $line = DB::table('order_lines')->where('order_id', $lastOrder->id)->first();
+        $this->post('/gestion/boutique-elegancia/operacion', [
+            'action' => 'return', 'key' => (string) Str::uuid(), 'line_id' => $line->id,
+            'quantity' => 1, 'condition' => 'available', 'reason' => 'Cliente devuelve la prenda sin uso',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(9, (int) DB::table('stock_positions')->where('product_id', $this->productA)->value('physical'));
+        $this->assertSame(0, DB::table('refunds')->count());
+        $this->post('/gestion/boutique-elegancia/operacion', [
+            'action' => 'refund', 'key' => (string) Str::uuid(), 'order_id' => $lastOrder->id,
+            'amount_minor' => 4500, 'method' => 'cash', 'cash_session_id' => $ownerCash, 'reference' => 'DEVOLUCION-JORNADA',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(4500, (int) DB::table('refunds')->sum('amount_minor'));
+        $this->assertSame(3500, 5000 + (int) DB::table('cash_entries')->where('cash_session_id', $ownerCash)->sum('amount_minor'));
+        $this->assertSame(16500, 10000 + (int) DB::table('cash_entries')->where('cash_session_id', $cashSession->id)->sum('amount_minor'));
 
         // ---------------------------------------------------------------------
         // PASO 7: Cierre y Arqueo de Caja
         // Fondo inicial: S/ 100.00
         // + Venta 1 (efectivo): S/ 45.00
-        // + Venta 2 (efectivo mixto): S/ 30.00
         // + Abono cliente (efectivo): S/ 20.00
-        // Total esperado en caja física = S/ 195.00 (19500 céntimos)
+        // Total de esta caja: S/165. La venta mixta y el reembolso pertenecen al propietario.
         // ---------------------------------------------------------------------
         $this->actingAs($this->cashier);
 
@@ -336,13 +353,13 @@ class JornadaCompletaTest extends TestCase
             'action' => 'close_cash',
             'key' => (string) Str::uuid(),
             'cash_session_id' => $cashSession->id,
-            'counted_minor' => 19500, // Arqueo exacto
+            'counted_minor' => 16500, // The owner's mixed sale belongs to a separate cash session.
         ]);
-        $closeResponse->assertSessionHasNoErrors();
+        $closeResponse->assertRedirect()->assertSessionHasNoErrors();
 
         $closedSession = DB::table('cash_sessions')->where('id', $cashSession->id)->first();
         $this->assertNotNull($closedSession->closed_at);
-        $this->assertSame(19500, (int) $closedSession->counted_minor);
+        $this->assertSame(16500, (int) $closedSession->counted_minor);
 
         // ---------------------------------------------------------------------
         // PASO 8: Seguridad y Reapertura Auditada
@@ -363,12 +380,12 @@ class JornadaCompletaTest extends TestCase
             'cash_session_id' => $cashSession->id,
             'reason' => 'Reapertura autorizada por ajuste de conteo nocturno',
         ]);
-        $reopenResponse->assertSessionHasNoErrors();
+        $reopenResponse->assertRedirect()->assertSessionHasNoErrors();
 
         // Verificar registro de auditoría de reapertura
         $this->assertSame(1, DB::table('cash_reopenings')->where('cash_session_id', $cashSession->id)->count());
         $reopenLog = DB::table('cash_reopenings')->where('cash_session_id', $cashSession->id)->first();
-        $this->assertSame(19500, (int) $reopenLog->previous_counted_minor);
+        $this->assertSame(16500, (int) $reopenLog->previous_counted_minor);
         $this->assertSame('Reapertura autorizada por ajuste de conteo nocturno', $reopenLog->reason);
     }
 }

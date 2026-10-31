@@ -43,7 +43,7 @@ class ProductMediaController extends Controller
         }
         $commerce->audit($product->tenant_id, 'product_image_updated', (string) $imageId);
 
-        return back()->with('success', 'Foto actualizada.');
+        return redirect()->route('manage.products.media', ['slug' => $slug, 'productId' => $productId])->with('success', 'Foto actualizada.');
     }
 
     public function destroy(Request $request, string $slug, int $productId, int $imageId, Commerce $commerce): RedirectResponse
@@ -59,6 +59,6 @@ class ProductMediaController extends Controller
         DB::afterCommit(fn () => Storage::disk('local')->delete($image->path));
         $commerce->audit($product->tenant_id, 'product_image_deleted', (string) $imageId);
 
-        return back()->with('success', 'Foto eliminada. El producto y sus ventas se conservan.');
+        return redirect()->route('manage.products.media', ['slug' => $slug, 'productId' => $productId])->with('success', 'Foto eliminada. El producto y sus ventas se conservan.');
     }
 }

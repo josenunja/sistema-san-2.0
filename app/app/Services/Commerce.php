@@ -328,6 +328,9 @@ class Commerce
             'boleta' => 'boleta',
             default => 'ticket',
         };
+        if (config('business.internal_documents_only') && $documentType !== 'ticket') {
+            $this->fail('Esta entrega permite únicamente notas de venta internas. La facturación electrónica no está habilitada.');
+        }
         $customerDocType = (string) ($data['customer_document_type'] ?? ($documentType === 'factura' ? 'ruc' : 'dni'));
         $customerDocNumber = trim((string) ($data['customer_document_number'] ?? ''));
         $customerLegalName = trim((string) ($data['customer_legal_name'] ?? ''));
@@ -361,7 +364,7 @@ class Commerce
             }
         }
 
-        $taxBaseMinor = (int) round($total / 1.18);
+        $taxBaseMinor = $documentType === 'ticket' ? $total : intdiv($total * 100 + 59, 118);
         $taxIgvMinor = $total - $taxBaseMinor;
         $fiscal = $this->allocateFiscalNumber($tenant, $documentType, $data['document_series'] ?? null);
 

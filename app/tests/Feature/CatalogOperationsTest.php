@@ -41,6 +41,31 @@ class CatalogOperationsTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_new_product_returns_to_first_management_page_and_is_visible_with_a_large_catalog(): void
+    {
+        for ($index = 0; $index < 40; $index++) {
+            DB::table('products')->insert(['tenant_id' => $this->tenant, 'sku' => 'BULK-'.$index, 'name' => 'Antiguo '.$index, 'price_minor' => 100]);
+        }
+        $this->from('/gestion/catalog-tools-test?page=2&q=Antiguo')->post('/gestion/catalog-tools-test/productos', [
+            'name' => 'ZZZ producto recién creado', 'price_minor' => 1250, 'published' => true,
+        ])->assertRedirect(route('manage.catalog', ['slug' => 'catalog-tools-test']));
+        $this->get('/gestion/catalog-tools-test')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('products.current_page', 1)->where('products.data.0.name', 'ZZZ producto recién creado'));
+    }
+
+    public function test_product_image_does_not_replace_the_previous_management_page(): void
+    {
+        $image = UploadedFile::fake()->image('producto.png', 8, 8);
+        $this->post('/gestion/catalog-tools-test/productos/'.$this->product.'/foto', ['image' => $image])->assertRedirect();
+        $page = '/gestion/catalog-tools-test/productos/'.$this->product.'/fotos';
+        $this->get($page)->assertOk();
+        $this->get('/tienda/catalog-tools-test/producto/'.$this->product.'/foto')->assertOk();
+        $this->assertSame(url($page), session()->previousUrl());
+        $id = DB::table('product_images')->where('product_id', $this->product)->value('id');
+        $this->patch($page.'/'.$id, ['alt_text' => 'Foto editada', 'sort_order' => 0, 'cover' => true])->assertRedirect($page);
+        $this->get($page)->assertOk()->assertInertia(fn (Assert $response) => $response->where('images.0.alt_text', 'Foto editada'));
+    }
+
     public function test_csv_preview_is_read_only_then_confirm_is_exact_and_repeatable(): void
     {
         $csv = "sku,nombre,precio,categoria,grupo,publicado\nNEW,=1+1,10.50,Prueba,Grupo,1\n";

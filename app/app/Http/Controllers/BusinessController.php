@@ -39,7 +39,7 @@ class BusinessController extends Controller
         $tenant = $request->attributes->get('tenant');
         $id = (int) $tenant->id;
         $warehouseIds = app(WarehouseAccess::class)->ids($id);
-        $data = [];
+        $data = ['internalDocumentsOnly' => (bool) config('business.internal_documents_only')];
         $pages = [];
         if (in_array($section, ['inventario', 'compras', 'pos'], true)) {
             $data['products'] = DB::table('products')->where('tenant_id', $id)->where('archived', false)->orderBy('name')->limit(500)->get(['id', 'name', 'sku', 'barcode', 'price_minor', 'minimum_stock', 'category']);

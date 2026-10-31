@@ -1,68 +1,39 @@
-# ==============================================================================
-# SAS SAN - Programador Automático de Respaldos Diarios en Windows
-# Versión: 2.0 - Entrega Comercial
-# ==============================================================================
 param(
-    [string]$Hora = "22:00",
-    [string]$Destino = "",
-    [string]$CopiaSecundaria = "",
-    [string]$TaskName = "SAS_SAN_Respaldo_Diario",
-    [switch]$Eliminar
+    [ValidatePattern('^(?:[01][0-9]|2[0-3]):[0-5][0-9]$')][string]$Hora='22:00',
+    [string]$Destino='', [string]$CopiaSecundaria='', [string]$TaskName='',
+    [ValidateSet('Auto','Docker','Nativo')][string]$Modo='Auto',
+    [string]$Configuracion='', [switch]$Eliminar, [switch]$SoloXml
 )
-
-$ErrorActionPreference = 'Stop'
-$ScriptRoot = [IO.Path]::GetFullPath($PSScriptRoot)
-$RespaldoScript = Join-Path $ScriptRoot 'respaldo-cliente.ps1'
-
-if ($Eliminar) {
-    Write-Host "Eliminando tarea programada: $TaskName..."
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Host "Tarea '$TaskName' eliminada exitosamente." -ForegroundColor Green
-    exit 0
+$ErrorActionPreference='Stop'
+$rootPath=[IO.Path]::GetFullPath($PSScriptRoot)
+$sha=[Security.Cryptography.SHA256]::Create()
+try { $id=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($rootPath.ToLowerInvariant())))).Replace('-','').Substring(0,12) } finally { $sha.Dispose() }
+if(!$TaskName) { $TaskName='SAS_SAN_Respaldo_'+$id }
+if($TaskName -notmatch '^[a-zA-Z0-9_-]{1,100}$') { throw 'Nombre de tarea no admitido.' }
+$description='SAS SAN backup instance '+$id
+$existing=Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if($existing -and $existing.Description -ne $description) { throw 'La tarea pertenece a otra instalación. No se modificó.' }
+if($Eliminar) {
+    if($existing) { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false }
+    Write-Output ('Tarea retirada de esta instalación: '+$TaskName)
+    return
 }
-
-if (!(Test-Path -LiteralPath $RespaldoScript)) {
-    throw "No se encontró el script de respaldo en $RespaldoScript"
+$exe=if(Get-Command pwsh.exe -ErrorAction SilentlyContinue){(Get-Command pwsh.exe).Source}else{Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'}
+function Quote-SasArgument([string]$Value) {
+    if($Value -match '["\r\n]' -or $Value.EndsWith('\')) { throw 'Argumento de tarea no admitido: use una ruta sin comillas ni barra final.' }
+    return '"'+$Value+'"'
 }
-
-# Preparar argumentos
-$argList = @("-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", "`"$RespaldoScript`"")
-if (![string]::IsNullOrWhiteSpace($Destino)) {
-    $argList += @("-Destino", "`"$Destino`"")
+$arguments='-NoProfile -NonInteractive -WindowStyle Hidden -File '+(Quote-SasArgument (Join-Path $rootPath 'respaldo-cliente.ps1'))+' -Modo '+$Modo
+foreach($pair in @(@('Destino',$Destino),@('CopiaSecundaria',$CopiaSecundaria),@('Configuracion',$Configuracion))) {
+    if($pair[1]) { $arguments+=' -'+$pair[0]+' '+(Quote-SasArgument $pair[1]) }
 }
-if (![string]::IsNullOrWhiteSpace($CopiaSecundaria)) {
-    $argList += @("-CopiaSecundaria", "`"$CopiaSecundaria`"")
-}
-$argString = $argList -join ' '
-
-Write-Host "=========================================================="
-Write-Host "Configurando Respaldo Automático Diario en Windows"
-Write-Host "=========================================================="
-Write-Host "Tarea      : $TaskName"
-Write-Host "Hora       : $Hora (todos los días)"
-Write-Host "Destino    : $(if($Destino){$Destino}else{'Por defecto: ' + (Join-Path $ScriptRoot 'respaldos')})"
-if ($CopiaSecundaria) {
-    Write-Host "Secundario : $CopiaSecundaria"
-}
-Write-Host "=========================================================="
-
-try {
-    # 1. Definir la acción
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $argString -WorkingDirectory $ScriptRoot
-
-    # 2. Definir el disparador (Diario a la hora especificada)
-    $triggerTime = [DateTime]::ParseExact($Hora, "HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
-    $trigger = New-ScheduledTaskTrigger -Daily -At $triggerTime
-
-    # 3. Configuraciones de energía y ejecución
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-
-    # 4. Registrar la tarea (usa la cuenta del usuario actual)
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Description "Respaldo diario automático de base de datos y archivos de SAS SAN." -Force | Out-Null
-
-    Write-Host "¡ÉXITO! La tarea '$TaskName' ha sido programada para ejecutarse diariamente a las $Hora." -ForegroundColor Green
-    Write-Host "Los registros y estado se guardarán automáticamente en ESTADO_ULTIMO_RESPALDO.txt."
-} catch {
-    Write-Error "Error al programar la tarea: $($_.Exception.Message)"
-    Write-Host "Nota: Si PowerShell no se ejecutó como Administrador, intente abrir PowerShell como Administrador para registrar la tarea programada." -ForegroundColor Yellow
-}
+$action=New-ScheduledTaskAction -Execute $exe -Argument $arguments -WorkingDirectory $rootPath
+$time=[DateTime]::ParseExact($Hora,'HH:mm',[Globalization.CultureInfo]::InvariantCulture)
+$trigger=New-ScheduledTaskTrigger -Daily -At $time
+$settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+$principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+$task=New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description $description
+if($SoloXml) { $task | Export-ScheduledTask; return }
+Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force | Out-Null
+Write-Output $TaskName
+Write-Host ('Respaldo diario a las '+$Hora+' según la hora de Windows. El equipo debe estar encendido y el usuario con sesión iniciada.')
