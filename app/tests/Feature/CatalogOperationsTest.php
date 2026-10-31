@@ -66,6 +66,13 @@ class CatalogOperationsTest extends TestCase
         $this->get($page)->assertOk()->assertInertia(fn (Assert $response) => $response->where('images.0.alt_text', 'Foto editada'));
     }
 
+    public function test_product_search_json_keeps_the_management_page_as_previous_url(): void
+    {
+        $this->get('/gestion/catalog-tools-test')->assertOk();
+        $this->getJson('/gestion/catalog-tools-test/buscar-productos?q=Product')->assertOk();
+        $this->assertSame(url('/gestion/catalog-tools-test'), session()->previousUrl());
+    }
+
     public function test_csv_preview_is_read_only_then_confirm_is_exact_and_repeatable(): void
     {
         $csv = "sku,nombre,precio,categoria,grupo,publicado\nNEW,=1+1,10.50,Prueba,Grupo,1\n";

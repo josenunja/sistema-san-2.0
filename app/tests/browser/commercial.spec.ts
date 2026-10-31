@@ -9,7 +9,7 @@ const access = JSON.parse(
         'utf8',
     ),
 ) as {
-    accounts: { admin: Account };
+    accounts: { admin: Account; newOwner: { email: string; password: string } };
     companies: { moda: { slug: string }; calzado: { slug: string } };
 };
 const slug = access.companies.moda.slug;
@@ -270,4 +270,66 @@ test('offline: una venta desconectada conserva pendientes al recargar y sincroni
     await expect(page.locator('#pending')).toContainText('Sincronizada');
     await page.locator('#sync').click();
     await expect(page.locator('#pending').locator('li')).toHaveCount(1);
+});
+
+test('propietario nuevo: desde perfil ve su tienda, activa MFA y entra a administrar', async ({
+    page,
+}) => {
+    const owner = access.accounts.newOwner;
+    expect(owner).toBeTruthy();
+    await page.goto('/settings/profile');
+    await expect(page).toHaveURL(/login/);
+    await page.locator('#email').fill(owner.email);
+    await page.locator('#password').fill(owner.password);
+    await page.locator('[data-test="login-button"]').click();
+    await expect(page).toHaveURL(/settings\/security|user\/confirm-password/);
+    if (page.url().includes('confirm-password')) {
+        await page.locator('#password').fill(owner.password);
+        await page.locator('[data-test="confirm-password-button"]').click();
+    }
+    await expect(page).toHaveURL(/settings\/security/);
+    await page.goto('/settings/profile');
+    const accessCard = page.getByRole('region', { name: 'Acceso a tu tienda' });
+    await expect(
+        accessCard.getByText('Tu cuenta ya tiene acceso', { exact: false }),
+    ).toBeVisible();
+    await accessCard
+        .getByRole('link', { name: 'Ver mi tienda', exact: true })
+        .click();
+    await expect(page).toHaveURL(new RegExp(`/tienda/${slug}$`));
+    await page.goto('/settings/profile');
+    await page
+        .getByRole('region', { name: 'Acceso a tu tienda' })
+        .getByRole('link', { name: 'Configurar seguridad', exact: true })
+        .click();
+    await expect(page).toHaveURL(/settings\/security|user\/confirm-password/);
+    if (page.url().includes('confirm-password')) {
+        await page.locator('#password').fill(owner.password);
+        await page.locator('[data-test="confirm-password-button"]').click();
+    }
+    await page
+        .getByRole('button', {
+            name: 'Activar verificación en dos pasos',
+            exact: true,
+        })
+        .click();
+    const dialog = page.getByRole('dialog');
+    const manualKey = dialog.locator('input[readonly]');
+    await expect(manualKey).toHaveValue(/^[A-Z2-7]+$/);
+    const secret = await manualKey.inputValue();
+    await dialog
+        .getByRole('button', { name: 'Continuar', exact: true })
+        .click();
+    await dialog.locator('input:not([type="hidden"])').fill(code(secret));
+    await dialog
+        .getByRole('button', { name: 'Confirmar', exact: true })
+        .click();
+    await expect(dialog).not.toBeVisible();
+    await page
+        .getByRole('region', { name: 'Acceso a tu tienda' })
+        .getByRole('link', { name: 'Entrar a mi negocio', exact: true })
+        .click();
+    await expect(page).toHaveURL(
+        new RegExp(`/gestion/${slug}/operacion/resumen$`),
+    );
 });

@@ -16,6 +16,16 @@ class LoginResponse implements LoginContract, TwoFactorLoginResponse
             return response()->json(['two_factor' => false]);
         }
         if ($request->session()->has('url.intended')) {
+            $intendedPath = parse_url((string) $request->session()->get('url.intended'), PHP_URL_PATH);
+            if (in_array($intendedPath, ['/settings', '/settings/profile', '/dashboard'], true)
+                && ! $request->user()->two_factor_confirmed_at
+                && DB::table('memberships')->join('tenants', 'tenants.id', '=', 'memberships.tenant_id')
+                    ->where('memberships.user_id', $request->user()->id)->where('tenants.active', true)->exists()) {
+                $request->session()->forget('url.intended');
+
+                return redirect('/settings/security');
+            }
+
             return redirect()->intended('/dashboard');
         }
         $slug = $request->session()->pull('login_store');
@@ -28,6 +38,9 @@ class LoginResponse implements LoginContract, TwoFactorLoginResponse
                 return redirect('/settings/security');
             }
             $member = $members->sole();
+            if ($member->role === 'catalog') {
+                return redirect('/gestion/'.$member->slug);
+            }
             $section = match ($member->role) {
                 'cashier' => 'pos', 'warehouse' => 'inventario', default => 'resumen'
             };

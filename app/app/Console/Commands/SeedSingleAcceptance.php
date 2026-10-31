@@ -47,7 +47,12 @@ class SeedSingleAcceptance extends Command
             }
             DB::table('cash_sessions')->insert(['tenant_id' => $id, 'warehouse_id' => $warehouse, 'user_id' => $owner->id, 'opening_minor' => 0]);
 
-            return ['accounts' => ['admin' => ['email' => $owner->email, 'password' => $password, 'totp' => $totp]], 'companies' => ['moda' => ['id' => $id, 'slug' => $slug]]];
+            $newPassword = Str::random(36);
+            $newOwner = User::create(['name' => 'Propietario nuevo sintético', 'email' => 'new-owner-'.Str::lower(Str::random(10)).'@example.test', 'password' => $newPassword]);
+            $newOwner->forceFill(['email_verified_at' => now()])->save();
+            DB::table('memberships')->insert(['tenant_id' => $id, 'user_id' => $newOwner->id, 'role' => 'owner']);
+
+            return ['accounts' => ['admin' => ['email' => $owner->email, 'password' => $password, 'totp' => $totp], 'newOwner' => ['email' => $newOwner->email, 'password' => $newPassword]], 'companies' => ['moda' => ['id' => $id, 'slug' => $slug]]];
         });
         $output = $this->argument('output');
         if (! is_string($output) || file_put_contents($output, json_encode($result, JSON_THROW_ON_ERROR)) === false) {

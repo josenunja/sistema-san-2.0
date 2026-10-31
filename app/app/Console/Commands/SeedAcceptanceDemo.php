@@ -112,8 +112,14 @@ class SeedAcceptanceDemo extends Command
                 $companies[$slug] = ['id' => $id, 'slug' => 'demo-'.$slug.'-'.$suffix];
             }
 
+            $newPassword = Str::random(36);
+            $newOwner = User::create(['name' => 'Propietario nuevo sintético', 'email' => 'new-owner-'.$suffix.'@example.test', 'password' => Hash::make($newPassword)]);
+            $newOwner->forceFill(['email_verified_at' => now()])->save();
+            DB::table('memberships')->insert(['tenant_id' => $companies['moda']['id'], 'user_id' => $newOwner->id, 'role' => 'owner']);
+
             return [
                 'accounts' => [
+                    'newOwner' => ['email' => $newOwner->email, 'password' => $newPassword],
                     'admin' => ['id' => $admin->id, 'name' => $admin->name, 'email' => $admin->email, 'password' => $adminPassword, 'totp' => $adminTotp, 'role' => 'store_owner'],
                     'superadmin' => ['id' => $superAdmin->id, 'name' => $superAdmin->name, 'email' => $superAdmin->email, 'password' => $superAdminPassword, 'totp' => $superAdminTotp, 'role' => 'platform_owner'],
                 ],

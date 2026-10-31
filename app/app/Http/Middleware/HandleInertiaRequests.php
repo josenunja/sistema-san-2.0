@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Middleware;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -58,6 +59,7 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'environment' => app()->environment(),
             'singleBusiness' => (bool) config('business.single'),
+            'businessAccess' => fn () => $this->businessAccess($request),
             'success' => $request->session()->get('success'),
             'operationResult' => $request->session()->get('operation_result'),
             'auth' => [
@@ -65,5 +67,34 @@ class HandleInertiaRequests extends Middleware
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
+    }
+
+    /** @return array{name:string,slug:string,role:string,storeUrl:string,manageUrl:string,requiresMfa:bool}|null */
+    private function businessAccess(Request $request): ?array
+    {
+        $user = $request->user();
+        if (! $user) {
+            return null;
+        }
+        $query = DB::table('memberships')->join('tenants', 'tenants.id', '=', 'memberships.tenant_id')
+            ->where('memberships.user_id', $user->id)->where('tenants.active', true);
+        if (config('business.single')) {
+            $tenant = $request->attributes->get('instance_tenant');
+            if (! $tenant) {
+                return null;
+            }
+            $query->where('tenants.id', $tenant->id);
+        }
+        $store = $query->orderBy('tenants.name')->first(['tenants.name', 'tenants.slug', 'memberships.role']);
+        if (! $store) {
+            return null;
+        }
+        $section = match ($store->role) {
+            'cashier' => '/operacion/pos', 'warehouse' => '/operacion/inventario', 'catalog' => '', default => '/operacion/resumen',
+        };
+
+        return ['name' => $store->name, 'slug' => $store->slug, 'role' => $store->role,
+            'storeUrl' => '/tienda/'.$store->slug, 'manageUrl' => '/gestion/'.$store->slug.$section,
+            'requiresMfa' => ! $user->two_factor_secret || ! $user->two_factor_confirmed_at];
     }
 }

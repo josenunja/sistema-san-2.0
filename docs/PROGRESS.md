@@ -1,5 +1,17 @@
 # Estado verificable — 17 de octubre de 2026
 
+## Acceso a tienda desde Perfil y activación guiada — 31/10/2026
+
+El usuario mostró Perfil después de crear su cuenta. La comprobación de solo lectura confirmó membresía owner y correo verificado, con MFA aún pendiente. No se modificaron su contraseña, correo, membresía ni segundo factor. El perfil carecía de una guía visible hacia el negocio; un destino de sesión previo podía conservar Perfil como entrada, y Seguridad situaba MFA después del formulario de contraseña con varios textos en inglés.
+
+Ahora businessAccess comparte únicamente la tienda activa autorizada para el usuario (y solo la instancia seleccionada en modo single), sus enlaces y un booleano de MFA. Compradores y visitantes reciben null. Perfil/Seguridad incluyen un panel con Ver mi tienda, Configurar seguridad o Entrar a mi negocio según estado. Sidebar añade accesos y muestra Mi espacio. La activación TOTP y recuperación se explican en español y el módulo aparece primero en Seguridad. La protección MFA de gestión no se relajó; ver el catálogo público no la requiere. Se corrigió también la entrada de catalog a su catálogo en lugar de resumen prohibido.
+
+Login guía a personal sin MFA hacia Seguridad si el destino conservado era Perfil/Configuración/Dashboard. Se excluyen los GET JSON de la URL previa de sesión para que búsquedas, QR y claves de configuración no sustituyan una página HTML como destino de regreso. Hay pruebas de regresión de ese comportamiento.
+
+Validación: 100 pruebas / 1.055 aserciones y cinco carreras aprobadas en sas_san_test como sas_runtime. PHPStan/Pint, TypeScript, formato/lint (89 archivos) y build de 3.499 módulos aprobados. Cinco recorridos Playwright conjuntos aprobados en 1,9 minutos en la instalación aislada del puerto 8002: el nuevo caso entra con una cuenta aleatoria sin MFA y destino Perfil, ve la tienda, configura TOTP por QR/clave, confirma código real y entra a administración. Los cuatro recorridos comerciales anteriores también aprobaron. La prueba inicial de catalog necesitó corregir su fixture de sesión para pasar el Store concreto en lugar del SessionManager; no se alteró la aplicación para ocultar un fallo de autorización. No se probaron códigos del propietario real ni se le configuró MFA automáticamente.
+
+La copia instalada original recibe los cambios locales sin migraciones ni borrado de datos. El usuario debe recargar su página y completar personalmente MFA para gestionar productos. La cuenta ya existente se conserva. La actualización de código/paquete se publica como continuación de la autorización explícita de GitHub, manteniendo las entregas anteriores.
+
 ## Cierre de entrega local por pago único — 31/10/2026
 
 Alcance vigente: una empresa por instalación local Windows x64, preparada para desplegar después en infraestructura compatible. Dominio, hosting, SMTP, emisión fiscal, hardware y desarrollos especializados no incluidos. El precio propuesto de S/3.000 corresponde al paquete/servicio descrito en OFERTA_COMERCIAL.md; no se garantiza una venta ni se certifica la aceptación de un cliente que todavía no ha recibido el sistema.

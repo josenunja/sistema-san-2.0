@@ -37,6 +37,17 @@ defineOptions({
     <Head title="Seguridad de la cuenta" />
 
     <h1 class="sr-only">Seguridad de la cuenta</h1>
+
+    <section
+        id="verificacion-dos-pasos"
+        class="mb-8 scroll-mt-6 rounded-xl border p-5"
+    >
+        <ManageTwoFactor
+            :canManageTwoFactor="canManageTwoFactor"
+            :requiresConfirmation="requiresConfirmation"
+            :twoFactorEnabled="twoFactorEnabled"
+        />
+    </section>
     <section
         v-if="props.sessions.length"
         class="mb-8 space-y-4 rounded-xl border p-5"
@@ -137,17 +148,11 @@ defineOptions({
                     :disabled="processing"
                     data-test="update-password-button"
                 >
-                    Save
+                    Guardar contraseña
                 </Button>
             </div>
         </Form>
     </div>
-
-    <ManageTwoFactor
-        :canManageTwoFactor="canManageTwoFactor"
-        :requiresConfirmation="requiresConfirmation"
-        :twoFactorEnabled="twoFactorEnabled"
-    />
 
     <ManagePasskeys
         :canManagePasskeys="canManagePasskeys"

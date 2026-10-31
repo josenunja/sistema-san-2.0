@@ -42,11 +42,11 @@ onMounted(async () => {
     <Card class="w-full">
         <CardHeader>
             <CardTitle class="flex gap-3">
-                <LockKeyhole class="size-4" />2FA recovery codes
+                <LockKeyhole class="size-4" />Códigos de recuperación
             </CardTitle>
             <CardDescription>
-                Códigos de recuperación let you regain access if you lose your
-                2FA device. Store them in a secure password manager.
+                Estos códigos permiten recuperar el acceso si pierdes tu
+                celular. Guárdalos en un lugar privado y seguro.
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -58,8 +58,8 @@ onMounted(async () => {
                         :is="isRecoveryCodesVisible ? EyeOff : Eye"
                         class="size-4"
                     />
-                    {{ isRecoveryCodesVisible ? 'Hide' : 'View' }} recovery
-                    codes
+                    {{ isRecoveryCodesVisible ? 'Ocultar' : 'Ver' }} códigos de
+                    recuperación
                 </Button>
 
                 <Form

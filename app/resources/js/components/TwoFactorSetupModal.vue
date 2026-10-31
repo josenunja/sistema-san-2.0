@@ -48,7 +48,7 @@ const modalConfig = computed<TwoFactorConfigContent>(() => {
         return {
             title: 'Autenticación en dos pasos activada',
             description:
-                'Two-factor authentication is now enabled. Scan the QR code or enter the setup key in your authenticator app.',
+                'La verificación en dos pasos está activa. Conserva tus códigos de recuperación antes de continuar.',
             buttonText: 'Cerrar',
         };
     }
@@ -279,14 +279,14 @@ watch(
                                     @click="showVerificationStep = false"
                                     :disabled="processing"
                                 >
-                                    Back
+                                    Atrás
                                 </Button>
                                 <Button
                                     type="submit"
                                     class="w-auto flex-1"
                                     :disabled="processing || code.length < 6"
                                 >
-                                    Confirm
+                                    Confirmar
                                 </Button>
                             </div>
                         </div>

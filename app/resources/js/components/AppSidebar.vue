@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
-import { BookOpen, FolderGit2, LayoutGrid } from '@lucide/vue';
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import {
+    BookOpen,
+    FolderGit2,
+    LayoutGrid,
+    Store,
+    ShieldCheck,
+} from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -17,13 +24,30 @@ import {
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
+const page = usePage();
+const mainNavItems = computed<NavItem[]>(() => [
     {
         title: 'Mi negocio',
-        href: dashboard(),
+        href: page.props.businessAccess?.requiresMfa
+            ? '/settings/security'
+            : dashboard(),
         icon: LayoutGrid,
     },
-];
+    ...(page.props.businessAccess
+        ? [
+              {
+                  title: 'Ver mi tienda',
+                  href: page.props.businessAccess.storeUrl,
+                  icon: Store,
+              },
+              {
+                  title: 'Seguridad de mi cuenta',
+                  href: '/settings/security',
+                  icon: ShieldCheck,
+              },
+          ]
+        : []),
+]);
 
 const footerNavItems: NavItem[] = [
     {

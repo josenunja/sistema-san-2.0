@@ -1,6 +1,8 @@
 # SAS SAN
 
-Paquete Windows preparado para instalar: [Entrega local del 31/10/2026](https://github.com/josenunja/sistema-san-2.0/releases/tag/entrega-local-2026-10-31-494f920). Descargar el ZIP completo y su checksum SHA-256 desde esa entrega; el archivo automático «Source code» contiene únicamente el repositorio y requiere instalar dependencias. El paquete local incluye PHP/PostgreSQL y dependencias sin cuentas, bases ni claves del desarrollador.
+Paquete Windows preparado para instalar: [Entrega local con acceso guiado a la tienda](https://github.com/josenunja/sistema-san-2.0/releases/tag/entrega-local-2026-10-31-acceso-tienda). Descargar el ZIP completo y su checksum SHA-256 desde esa entrega; el archivo automático «Source code» contiene únicamente el repositorio y requiere instalar dependencias. El paquete local incluye PHP/PostgreSQL y dependencias sin cuentas, bases ni claves del desarrollador.
+
+Después de crear la cuenta, Perfil y Seguridad muestran el acceso al negocio y «Ver mi tienda». El personal completa la verificación en dos pasos para administrar; el catálogo público puede verse mientras tanto. No es necesario volver a crear la cuenta.
 
 Entrega local por pago único revisada el 31/10/2026. Para preparar el paquete Windows con PHP/PostgreSQL, dependencias y recursos compilados incluidos: `preparar-entrega-local.ps1`. El cliente ejecuta `armar-entorno-portatil.ps1` y `iniciar.ps1`, crea su cuenta y configura MFA. No requiere Node ni Docker para el uso de ese paquete. Ver [manual del operador](docs/MANUAL_RAPIDO_OPERADOR.md), [respaldo y recuperación sin sobrescribir la base activa](docs/GUIA_RESPALDOS_Y_RECUPERACION.md), [oferta de pago único](docs/OFERTA_COMERCIAL.md) y [acta por completar con cada cliente](docs/ACTA_ENTREGA_CONFORMIDAD.md). SUNAT, correo real y alojamiento público permanecen sin activar. No usar los scripts antiguos de cuentas/MFA: fueron retirados y no modifican datos.
 
