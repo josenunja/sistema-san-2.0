@@ -15,6 +15,12 @@ class LoginResponse implements LoginContract, TwoFactorLoginResponse
         if ($request->wantsJson()) {
             return response()->json(['two_factor' => false]);
         }
+        if (! config('business.single') && $request->user()->platform_owner) {
+            $request->session()->forget(['url.intended', 'login_store']);
+
+            return redirect($request->user()->two_factor_secret && $request->user()->two_factor_confirmed_at
+                ? '/plataforma' : '/settings/security');
+        }
         if ($request->session()->has('url.intended')) {
             $intendedPath = parse_url((string) $request->session()->get('url.intended'), PHP_URL_PATH);
             if (in_array($intendedPath, ['/settings', '/settings/profile', '/dashboard'], true)

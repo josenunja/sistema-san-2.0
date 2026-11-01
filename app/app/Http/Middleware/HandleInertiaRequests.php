@@ -59,6 +59,13 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'environment' => app()->environment(),
             'singleBusiness' => (bool) config('business.single'),
+            'platformAccess' => function () use ($request) {
+                $user = $request->user();
+
+                return ! config('business.single') && $user?->platform_owner
+                    ? ['manageUrl' => '/plataforma', 'requiresMfa' => ! $user->two_factor_secret || ! $user->two_factor_confirmed_at]
+                    : null;
+            },
             'businessAccess' => fn () => $this->businessAccess($request),
             'success' => $request->session()->get('success'),
             'operationResult' => $request->session()->get('operation_result'),
@@ -78,6 +85,10 @@ class HandleInertiaRequests extends Middleware
         }
         $query = DB::table('memberships')->join('tenants', 'tenants.id', '=', 'memberships.tenant_id')
             ->where('memberships.user_id', $user->id)->where('tenants.active', true);
+        $slug = $request->route('slug');
+        if (is_string($slug)) {
+            $query->where('tenants.slug', $slug);
+        }
         if (config('business.single')) {
             $tenant = $request->attributes->get('instance_tenant');
             if (! $tenant) {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { money, state, localDate } from '@/lib/commerce';
+import StoreManagementAccess from '@/components/StoreManagementAccess.vue';
 const props = defineProps<{
     tenant: { name: string; slug: string };
     customer: {
@@ -38,6 +39,7 @@ const profile = useForm({
 </script>
 <template>
     <Head title="Mi cuenta de comprador" />
+    <StoreManagementAccess :slug="tenant.slug" />
     <main class="mx-auto max-w-5xl p-6 py-12 text-slate-900">
         <Link :href="`/tienda/${tenant.slug}`" class="text-sm text-emerald-700"
             >← {{ tenant.name }}</Link
@@ -64,6 +66,11 @@ const profile = useForm({
             <h2 class="text-xl font-semibold md:col-span-2">
                 Crear cuenta de comprador
             </h2>
+            <p class="text-sm leading-6 text-slate-500 md:col-span-2">
+                Esta cuenta sirve para comprar y consultar tus pedidos. Para
+                administrar la tienda necesitas una invitación del propietario
+                con los permisos correspondientes.
+            </p>
             <label class="grid gap-2 text-sm"
                 >Nombre<input
                     v-model="register.name"

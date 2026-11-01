@@ -60,6 +60,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/mis-pedidos', [CustomerHubController::class, 'orders'])->name('customer.hub.orders');
     Route::post('/mis-pedidos/notificaciones/leer', [CustomerHubController::class, 'readNotifications'])->name('customer.hub.notifications.read');
     Route::get('/dashboard', function () {
+        if (! config('business.single') && auth()->user()->platform_owner) {
+            return redirect(auth()->user()->two_factor_secret && auth()->user()->two_factor_confirmed_at
+                ? '/plataforma' : '/settings/security');
+        }
         if (config('business.single')) {
             $tenant = request()->attributes->get('instance_tenant');
             abort_unless($tenant !== null, 404);

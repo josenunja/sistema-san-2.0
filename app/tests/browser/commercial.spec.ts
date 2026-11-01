@@ -48,6 +48,41 @@ async function login(page: Page) {
     await expect(page).toHaveURL(/dashboard|gestion/);
 }
 
+test('acceso desde tienda pública: propietario configura diseño, visitante no ve administración', async ({
+    page,
+}) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/tienda/${slug}`);
+    const management = page.getByRole('region', {
+        name: 'Administración de esta tienda',
+    });
+    await expect(management).not.toBeVisible();
+    await login(page);
+    await page.goto(`/tienda/${slug}`);
+    await expect(management).toBeVisible();
+    await expect(
+        management.getByRole('link', {
+            name: 'Administrar tienda',
+            exact: true,
+        }),
+    ).toHaveAttribute('href', `/gestion/${slug}/operacion/resumen`);
+    expect(
+        await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+        ),
+    ).toBeTruthy();
+    await page.screenshot({
+        path: '../.runtime/tienda-acceso-propietario-movil.png',
+        fullPage: true,
+    });
+    await management
+        .getByRole('link', { name: 'Configurar diseño', exact: true })
+        .click();
+    await expect(page).toHaveURL(new RegExp(`/gestion/${slug}/configurar$`));
+    await page.goto(`/tienda/${slug}/cuenta`);
+    await expect(management).toBeVisible();
+});
+
 test('tienda móvil: catálogo, carrito y cotización real sin desbordamiento', async ({
     page,
 }) => {

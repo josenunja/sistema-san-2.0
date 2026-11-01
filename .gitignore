@@ -18,3 +18,8 @@ claves/
 ESTADO_ULTIMO_RESPALDO.txt
 **/*.env
 **/secrets/
+/tmp/
+/output/*
+!/output/pdf/
+/output/pdf/*
+!/output/pdf/Manual_completo_SAS_SAN.pdf

@@ -16,6 +16,7 @@ import {
     MapPin,
 } from '@lucide/vue';
 import BusinessShell from '@/components/BusinessShell.vue';
+import StoreManagementAccess from '@/components/StoreManagementAccess.vue';
 import { money, minor, jsonPost } from '@/lib/commerce';
 type Product = {
     id: number;
@@ -435,6 +436,10 @@ const themeEyebrow = computed(() =>
         :class="themeClass"
         :style="storefrontStyle"
     >
+        <StoreManagementAccess
+            v-if="!managing && !preview"
+            :slug="tenant.slug"
+        />
         <header
             v-if="!managing"
             class="storefront-header border-b bg-white p-5"

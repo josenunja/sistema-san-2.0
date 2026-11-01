@@ -26,6 +26,17 @@ import type { NavItem } from '@/types';
 
 const page = usePage();
 const mainNavItems = computed<NavItem[]>(() => [
+    ...(page.props.platformAccess
+        ? [
+              {
+                  title: 'Administración general',
+                  href: page.props.platformAccess.requiresMfa
+                      ? '/settings/security'
+                      : page.props.platformAccess.manageUrl,
+                  icon: ShieldCheck,
+              },
+          ]
+        : []),
     {
         title: 'Mi negocio',
         href: page.props.businessAccess?.requiresMfa

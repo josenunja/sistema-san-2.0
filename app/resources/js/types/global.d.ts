@@ -21,6 +21,7 @@ declare module '@inertiajs/core' {
             name: string;
             auth: Auth;
             businessAccess: BusinessAccess | null;
+            platformAccess: { manageUrl: string; requiresMfa: boolean } | null;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

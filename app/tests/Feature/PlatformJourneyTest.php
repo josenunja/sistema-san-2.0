@@ -160,7 +160,7 @@ class PlatformJourneyTest extends TestCase
         $owner = $this->administrator();
         $tenant = DB::table('tenants')->insertGetId(['name' => 'Navegación', 'slug' => 'journey-navigation']);
         DB::table('memberships')->insert(['tenant_id' => $tenant, 'user_id' => $owner->id, 'role' => 'owner']);
-        $this->actingAs($owner)->get('/dashboard')->assertOk();
+        $this->actingAs($owner)->get('/dashboard')->assertRedirect('/plataforma');
         $version = app(HandleInertiaRequests::class)->version(Request::create('/'));
         $this->withHeaders(['X-Inertia' => 'true', 'X-Requested-With' => 'XMLHttpRequest', 'X-Inertia-Version' => (string) $version])
             ->get('/gestion/journey-navigation')->assertOk();
