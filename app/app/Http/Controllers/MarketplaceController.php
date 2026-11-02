@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\FreshInstallation;
 use App\Services\ScheduledPrices;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,10 @@ class MarketplaceController extends Controller
 
                 return app(CatalogController::class)->index($request);
             });
+        }
+        if (app(FreshInstallation::class)->pending()) {
+            // Instalación recién descargada: primero se crea la cuenta administradora y la primera tienda.
+            return redirect('/instalacion');
         }
         $customStorefront = $this->customStorefront($request);
         if ($customStorefront instanceof Response) {

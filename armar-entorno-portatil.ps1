@@ -49,7 +49,7 @@ $template['APP_DEBUG']='false'
 $template['APP_URL']='http://localhost:'+$PuertoWeb; $template['APP_PORT']=[string]$PuertoWeb
 $template['DB_CONNECTION']='pgsql'; $template['DB_HOST']='127.0.0.1'; $template['DB_PORT']=[string]$PuertoPostgres
 $template['DB_DATABASE']=$BaseDatos; $template['DB_USERNAME']='sas_runtime'; $template['DB_PASSWORD']=[IO.File]::ReadAllText($runtimeFile).Trim()
-$template['MAIL_MAILER']='log'; $template['BUSINESS_MODE']='single'
+$template['MAIL_MAILER']='log'; $template['BUSINESS_MODE']='platform'
 $template['SESSION_COOKIE']='negocio_'+[guid]::NewGuid().ToString('N')+'_session'
 $ownerPassword=[IO.File]::ReadAllText($ownerFile).Trim()
 $previousPg=$env:PGPASSWORD

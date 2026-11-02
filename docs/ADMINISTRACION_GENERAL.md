@@ -15,7 +15,7 @@ Ser administrador general no añade automáticamente una membresía comercial en
 
 1. Instale el paquete Windows completo o prepare las dependencias desde el repositorio siguiendo `INSTALACION_REPOSITORIO.md`.
 2. Complete la instalación inicial y cree personalmente la primera cuenta. El instalador inicial le concede propiedad de plataforma y de la primera tienda, sin contraseña universal.
-3. Detenga los servicios de esa copia con `detener.ps1`. En su configuración privada `app/.env.native`, cambie únicamente `BUSINESS_MODE=single` por `BUSINESS_MODE=platform`. Conserve APP_KEY, credenciales, base y archivos privados. En un despliegue distinto use su configuración de entorno correspondiente.
+3. Las instalaciones nuevas desde el 02/11/2026 ya arrancan en modo plataforma y no necesitan este paso. En una copia anterior en modo `single`, detenga los servicios de esa copia con `detener.ps1`. En su configuración privada `app/.env.native`, cambie únicamente `BUSINESS_MODE=single` por `BUSINESS_MODE=platform`. Conserve APP_KEY, credenciales, base y archivos privados. En un despliegue distinto use su configuración de entorno correspondiente.
 4. Ejecute `iniciar.ps1`. No borre ni reinicie la base de datos.
 5. Inicie sesión con la cuenta inicial. Si falta el segundo factor, se abre Seguridad y aparece la tarjeta **Administrador general**. Active y confirme MFA personalmente y guarde los códigos de recuperación.
 6. Abra **Administrar empresas** o `/plataforma`. Las acciones sensibles exigen contraseña reciente.

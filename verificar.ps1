@@ -1,4 +1,4 @@
-param([string]$Filter = 'Tenant|Commerce|Offline|Platform|Catalog|Customer|Fiscal|StoreOnboarding|SingleBusiness|JornadaCompleta|LocalDelivery|StoreAccess|MfaRequirement')
+param([string]$Filter = 'Tenant|Commerce|Offline|Platform|Catalog|Customer|Fiscal|StoreOnboarding|SingleBusiness|JornadaCompleta|LocalDelivery|StoreAccess|MfaRequirement|MarketplaceHome')
 $ErrorActionPreference = 'Stop'
 Push-Location (Join-Path $PSScriptRoot 'app')
 try {
