@@ -40,6 +40,22 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
      *
      * @return array<string, string>
      */
+    /**
+     * Indica si esta instalación exige MFA al personal. Nunca se relaja en producción.
+     */
+    public static function mfaRequired(): bool
+    {
+        return app()->environment('production') || (bool) config('security.require_mfa', true);
+    }
+
+    /**
+     * Punto único de decisión: el usuario cumple si tiene MFA confirmado o la instalación no lo exige.
+     */
+    public function meetsMfaRequirement(): bool
+    {
+        return (bool) ($this->two_factor_secret && $this->two_factor_confirmed_at) || ! static::mfaRequired();
+    }
+
     protected function casts(): array
     {
         return [

@@ -22,7 +22,7 @@ class InvitationController extends Controller
     public function index(Request $request, int $tenantId): Response
     {
         $user = $request->user();
-        abort_unless($user->two_factor_secret && $user->two_factor_confirmed_at, 403);
+        abort_unless($user->meetsMfaRequirement(), 403);
         abort_unless($user->platform_owner || DB::table('memberships')->where('tenant_id', $tenantId)->where('user_id', $user->id)->where('role', 'owner')->exists(), 403);
         $tenant = DB::table('tenants')->where('id', $tenantId)->first(['id', 'name', 'slug']);
         abort_unless($tenant !== null, 404);
@@ -41,7 +41,7 @@ class InvitationController extends Controller
     {
         $data = $request->validate(['tenant_id' => 'required|integer', 'email' => 'required|email|max:254', 'role' => ['required', Rule::in(['owner', 'cashier', 'warehouse', 'catalog'])]]);
         $user = $request->user();
-        abort_unless($user->two_factor_secret && $user->two_factor_confirmed_at, 403);
+        abort_unless($user->meetsMfaRequirement(), 403);
         $member = DB::table('memberships')->where('tenant_id', $data['tenant_id'])->where('user_id', $user->id)->where('role', 'owner')->exists();
         abort_unless($user->platform_owner || $member, 403);
         if (! $member) {
@@ -88,7 +88,7 @@ class InvitationController extends Controller
         $invite = DB::table('invitations')->where('id', $id)->first();
         abort_unless($invite !== null, 404);
         $user = $request->user();
-        abort_unless($user->two_factor_secret && $user->two_factor_confirmed_at, 403);
+        abort_unless($user->meetsMfaRequirement(), 403);
         abort_unless($user->platform_owner || DB::table('memberships')->where('tenant_id', $invite->tenant_id)->where('user_id', $user->id)->where('role', 'owner')->exists(), 403);
         DB::transaction(function () use ($id, $invite, $commerce, $revoke, $user) {
             DB::select('SELECT pg_advisory_xact_lock(?)', [$invite->tenant_id]);

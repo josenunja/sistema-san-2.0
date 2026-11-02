@@ -21,7 +21,7 @@ class ResolveTenant
             if ($request->routeIs('manage.catalog', 'manage.products.*')) {
                 abort_unless(in_array($membership->role, ['owner', 'catalog'], true), 403);
             }
-            if (! $request->user()->two_factor_secret || ! $request->user()->two_factor_confirmed_at) {
+            if (! $request->user()->meetsMfaRequirement()) {
                 return redirect('/settings/security');
             }
         }

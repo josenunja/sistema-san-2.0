@@ -63,7 +63,7 @@ class HandleInertiaRequests extends Middleware
                 $user = $request->user();
 
                 return ! config('business.single') && $user?->platform_owner
-                    ? ['manageUrl' => '/plataforma', 'requiresMfa' => ! $user->two_factor_secret || ! $user->two_factor_confirmed_at]
+                    ? ['manageUrl' => '/plataforma', 'requiresMfa' => ! $user->meetsMfaRequirement()]
                     : null;
             },
             'businessAccess' => fn () => $this->businessAccess($request),
@@ -106,6 +106,6 @@ class HandleInertiaRequests extends Middleware
 
         return ['name' => $store->name, 'slug' => $store->slug, 'role' => $store->role,
             'storeUrl' => '/tienda/'.$store->slug, 'manageUrl' => '/gestion/'.$store->slug.$section,
-            'requiresMfa' => ! $user->two_factor_secret || ! $user->two_factor_confirmed_at];
+            'requiresMfa' => ! $user->meetsMfaRequirement()];
     }
 }

@@ -18,13 +18,13 @@ class LoginResponse implements LoginContract, TwoFactorLoginResponse
         if (! config('business.single') && $request->user()->platform_owner) {
             $request->session()->forget(['url.intended', 'login_store']);
 
-            return redirect($request->user()->two_factor_secret && $request->user()->two_factor_confirmed_at
+            return redirect($request->user()->meetsMfaRequirement()
                 ? '/plataforma' : '/settings/security');
         }
         if ($request->session()->has('url.intended')) {
             $intendedPath = parse_url((string) $request->session()->get('url.intended'), PHP_URL_PATH);
             if (in_array($intendedPath, ['/settings', '/settings/profile', '/dashboard'], true)
-                && ! $request->user()->two_factor_confirmed_at
+                && ! $request->user()->meetsMfaRequirement()
                 && DB::table('memberships')->join('tenants', 'tenants.id', '=', 'memberships.tenant_id')
                     ->where('memberships.user_id', $request->user()->id)->where('tenants.active', true)->exists()) {
                 $request->session()->forget('url.intended');
@@ -40,7 +40,7 @@ class LoginResponse implements LoginContract, TwoFactorLoginResponse
         }
         $members = DB::table('memberships')->join('tenants', 'tenants.id', '=', 'memberships.tenant_id')->where('memberships.user_id', $request->user()->id)->where('tenants.active', true)->get(['tenants.slug', 'memberships.role']);
         if ($members->count() === 1) {
-            if (! $request->user()->two_factor_confirmed_at) {
+            if (! $request->user()->meetsMfaRequirement()) {
                 return redirect('/settings/security');
             }
             $member = $members->sole();

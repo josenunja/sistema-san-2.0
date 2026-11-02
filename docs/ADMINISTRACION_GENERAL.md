@@ -43,3 +43,7 @@ Al iniciar sesión, el administrador general entra primero a la consola de empre
 ## Alcance de publicación
 
 El repositorio y el paquete contienen programa, documentación y herramientas de instalación. No incluyen usuarios reales, contraseñas, secretos MFA, `.env.native`, bases ni respaldos. Crear una cuenta local no la crea en los equipos de quienes descargan el proyecto. Dominio, hosting, SMTP, pagos automáticos y emisión fiscal siguen requiriendo contratación, autorización y validación por separado.
+
+## Exigencia de MFA configurable (instalaciones locales)
+
+`REQUIRE_MFA` en `app/.env.native` controla si el personal debe activar la verificación en dos pasos para administrar. El valor por defecto es `true`. Con `REQUIRE_MFA=false` la gestión y la consola de plataforma no exigen MFA; las cuentas que ya lo activaron conservan su desafío al iniciar sesión. En `APP_ENV=production` el valor se ignora y MFA siempre es obligatorio. Reinicie con `detener.ps1` e `iniciar.ps1` tras cambiarlo. Para una cuenta que ya tiene MFA y no puede generar códigos, use `recuperar-acceso-local.ps1 -Email CORREO -Limpiar2FA`.

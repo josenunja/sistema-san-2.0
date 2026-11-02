@@ -23,7 +23,7 @@ class PlatformController extends Controller
     private function owner(Request $request): void
     {
         abort_unless($request->user()?->platform_owner, 403);
-        abort_unless($request->user()->two_factor_secret && $request->user()->two_factor_confirmed_at, 403, 'Activa MFA en configuración de seguridad.');
+        abort_unless($request->user()->meetsMfaRequirement(), 403, 'Activa MFA en configuración de seguridad.');
     }
 
     public function index(Request $request): Response

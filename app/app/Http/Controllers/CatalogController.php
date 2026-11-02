@@ -157,7 +157,7 @@ class CatalogController extends Controller
         $product = DB::table('products')->where('tenant_id', $tenant->id)->where('id', $productId)->first(['id', 'name', 'sku', 'price_minor', 'compare_at_minor', 'category', 'audience', 'trending', 'variant_group', 'size', 'color', 'description', 'published', 'archived']);
         abort_unless($product !== null, 404);
         if (! $product->published || $product->archived) {
-            abort_unless($request->user()?->two_factor_confirmed_at && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereIn('role', ['owner', 'catalog'])->exists(), 404);
+            abort_unless($request->user()?->meetsMfaRequirement() && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereIn('role', ['owner', 'catalog'])->exists(), 404);
         }
         $images = DB::table('product_images')->where('tenant_id', $tenant->id)->where('product_id', $productId)->orderBy('sort_order')->orderBy('id')->pluck('id')->map(fn ($id) => '/tienda/'.$slug.'/producto/'.$productId.'/foto/'.$id);
         $variants = $product->variant_group === '' ? collect() : DB::table('products')->where('tenant_id', $tenant->id)->where('variant_group', $product->variant_group)->where('published', true)->where('archived', false)->orderBy('size')->orderBy('color')->orderBy('name')->get(['id', 'name', 'price_minor', 'size', 'color']);

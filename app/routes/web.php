@@ -36,7 +36,7 @@ Route::get('/tienda/{slug}/producto/{productId}/foto/{imageId?}', function (Requ
     $product = DB::table('products')->where('tenant_id', $tenant->id)->where('id', $productId)->first();
     abort_unless($product !== null, 404);
     if (! $product->published || $product->archived) {
-        abort_unless($request->user()?->two_factor_confirmed_at && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereIn('role', ['owner', 'catalog'])->exists(), 404);
+        abort_unless($request->user()?->meetsMfaRequirement() && DB::table('memberships')->where('tenant_id', $tenant->id)->where('user_id', $request->user()->id)->whereIn('role', ['owner', 'catalog'])->exists(), 404);
     }
     $path = $imageId ? DB::table('product_images')->where('tenant_id', $tenant->id)->where('product_id', $productId)->where('id', $imageId)->value('path') : $product->image_path;
     abort_unless($path, 404);
@@ -61,7 +61,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/mis-pedidos/notificaciones/leer', [CustomerHubController::class, 'readNotifications'])->name('customer.hub.notifications.read');
     Route::get('/dashboard', function () {
         if (! config('business.single') && auth()->user()->platform_owner) {
-            return redirect(auth()->user()->two_factor_secret && auth()->user()->two_factor_confirmed_at
+            return redirect(auth()->user()->meetsMfaRequirement()
                 ? '/plataforma' : '/settings/security');
         }
         if (config('business.single')) {
