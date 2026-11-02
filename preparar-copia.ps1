@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][ValidateLength(1,80)][ValidatePattern('^[a-z0-9]+(?:-[a-z0-9]+)*$')][string]$Identificador,
     [ValidateSet('general','fashion','bakery','mechanic','grocery','hardware','restaurant','services','footwear','accessories','mixed','other')][string]$Rubro='general',
     [ValidateRange(1024,65535)][int]$Puerto=8001,
+    [ValidateSet('platform','single')][string]$Modo='platform',
     [string]$Destino=''
 )
 $ErrorActionPreference='Stop'
@@ -23,7 +24,7 @@ foreach($file in Get-ChildItem -LiteralPath $root -Filter '*.ps1' -File){Copy-It
 foreach($dir in @('storage/app/private','storage/framework/cache/data','storage/framework/sessions','storage/framework/views','storage/logs','bootstrap/cache')){New-Item -ItemType Directory -Force -Path (Join-Path $appTarget $dir) | Out-Null}
 $instanceTag=[guid]::NewGuid().ToString('N').Substring(0,8)
 $projectName='negocio-'+$Identificador+'-'+$instanceTag
-$values=@{APP_NAME='"'+$Nombre+'"';VITE_APP_NAME='"'+$Nombre+'"';APP_URL="http://localhost:$Puerto";APP_PORT="$Puerto";BUSINESS_MODE='single';BUSINESS_SLUG=$Identificador;BUSINESS_NAME='"'+$Nombre+'"';BUSINESS_TYPE=$Rubro;COMPOSE_PROJECT_NAME=$projectName;SESSION_COOKIE='negocio_'+$Identificador.Replace('-','_')+'_'+$instanceTag+'_session';APP_KEY='';DB_PASSWORD=''}
+$values=@{APP_NAME='"'+$Nombre+'"';VITE_APP_NAME='"'+$Nombre+'"';APP_URL="http://localhost:$Puerto";APP_PORT="$Puerto";BUSINESS_MODE=$Modo;BUSINESS_SLUG=$Identificador;BUSINESS_NAME='"'+$Nombre+'"';BUSINESS_TYPE=$Rubro;COMPOSE_PROJECT_NAME=$projectName;SESSION_COOKIE='negocio_'+$Identificador.Replace('-','_')+'_'+$instanceTag+'_session';APP_KEY='';DB_PASSWORD=''}
 $lines=Get-Content -LiteralPath (Join-Path $appSource '.env.example')
 $result=foreach($line in $lines){if($line -match '^([A-Z_][A-Z0-9_]*)='){$key=$matches[1];if($values.ContainsKey($key)){"$key=$($values[$key])";$values.Remove($key)}else{$line}}else{$line}}
 foreach($key in $values.Keys){$result+="$key=$($values[$key])"}
