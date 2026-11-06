@@ -3,6 +3,8 @@ export const money = (minor: number | string) =>
         style: 'currency',
         currency: 'PEN',
     }).format(Number(minor) / 100);
+export const isBusinessDayClosed = (value: boolean | number | string) =>
+    value === true || String(value) === '1';
 export function minor(value: string | number): number {
     const text = String(value).trim().replace(',', '.');
     if (!/^\d{1,7}(\.\d{1,2})?$/.test(text))
@@ -34,6 +36,7 @@ export const state = (
         bcp: 'BCP',
         web: 'Tienda',
         pos: 'POS',
+        offline: 'Caja sin conexión',
         receipt: 'Recepción',
         reserve: 'Reserva',
         sale: 'Venta',

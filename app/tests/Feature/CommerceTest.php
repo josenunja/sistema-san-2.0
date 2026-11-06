@@ -278,6 +278,105 @@ class CommerceTest extends TestCase
         $this->assertSame(1, DB::table('stock_movements')->where('kind', 'release')->count());
     }
 
+    public function test_dashboard_compares_equal_lima_periods_and_groups_verified_collections(): void
+    {
+        $orders = [];
+        foreach ([
+            ['2026-10-05T04:59:59.999999+00:00', 4000, 'pos'],
+            ['2026-10-05T05:00:00+00:00', 6000, 'web'],
+            ['2026-10-07T04:59:59.999999+00:00', 4000, 'offline'],
+        ] as [$confirmedAt, $amount, $channel]) {
+            $order = (string) Str::uuid();
+            DB::table('orders')->insert([
+                'id' => $order, 'tenant_id' => $this->tenant, 'warehouse_id' => $this->warehouse,
+                'channel' => $channel, 'status' => 'confirmed', 'delivery_method' => 'pickup',
+                'customer_name' => 'Cliente de prueba', 'phone' => '000000000',
+                'subtotal_minor' => $amount, 'discount_minor' => 0, 'total_minor' => $amount,
+                'tracking_hash' => hash('sha256', $order), 'expires_at' => $confirmedAt,
+            ]);
+            DB::table('sales')->insert(['tenant_id' => $this->tenant, 'order_id' => $order, 'confirmed_at' => $confirmedAt]);
+            $orders[] = $order;
+        }
+        $other = DB::table('products')->insertGetId(['tenant_id' => $this->tenant, 'name' => 'Sin costo', 'sku' => 'SKU2', 'price_minor' => 4000]);
+        DB::table('order_lines')->insert([
+            ['tenant_id' => $this->tenant, 'order_id' => $orders[1], 'product_id' => $this->product, 'sku' => 'SKU', 'name' => 'Producto', 'quantity' => 2, 'unit_minor' => 3000, 'total_minor' => 6000, 'cost_minor' => 2000],
+            ['tenant_id' => $this->tenant, 'order_id' => $orders[2], 'product_id' => $other, 'sku' => 'SKU2', 'name' => 'Sin costo', 'quantity' => 1, 'unit_minor' => 4000, 'total_minor' => 4000, 'cost_minor' => null],
+        ]);
+        foreach ([['cash', 'verified', 4000], ['yape', 'verified', 2000], ['bcp', 'pending', 1000]] as $index => [$method, $status, $amount]) {
+            DB::table('payments')->insert([
+                'tenant_id' => $this->tenant, 'order_id' => $orders[$index], 'method' => $method,
+                'status' => $status, 'amount_minor' => $amount,
+                'verified_at' => $status === 'verified' ? '2026-10-05T19:00:00+00:00' : null,
+            ]);
+        }
+
+        $this->get('/gestion/commerce-test/operacion/resumen?from=2026-10-05&to=2026-10-06')
+            ->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('data.report.net_minor', 10000)
+            ->where('data.report.sales_count', 2)
+            ->where('data.report.average_ticket_minor', 5000)
+            ->where('data.report.previous', ['from' => '2026-10-03', 'to' => '2026-10-04', 'net_minor' => 4000])
+            ->where('data.report.trend', [
+                ['from' => '2026-10-05', 'to' => '2026-10-05', 'amount_minor' => 6000],
+                ['from' => '2026-10-06', 'to' => '2026-10-06', 'amount_minor' => 4000],
+            ])
+            ->where('data.report.collections_minor', 6000)
+            ->where('data.report.debt_minor', 8000)
+            ->where('data.report.channel_mix', [
+                ['channel' => 'web', 'sales_count' => 1, 'amount_minor' => 6000],
+                ['channel' => 'offline', 'sales_count' => 1, 'amount_minor' => 4000],
+            ])
+            ->where('data.report.top_products', [
+                ['id' => $this->product, 'name' => 'Producto', 'sku' => 'SKU', 'units' => 2, 'amount_minor' => 6000, 'profit_minor' => 4000],
+                ['id' => $other, 'name' => 'Sin costo', 'sku' => 'SKU2', 'units' => 1, 'amount_minor' => 4000, 'profit_minor' => null],
+            ])
+            ->where('data.report.payment_mix', [['method' => 'cash', 'amount_minor' => 4000], ['method' => 'yape', 'amount_minor' => 2000]]));
+    }
+
+    public function test_pos_handoff_is_explicit_and_order_filters_preserve_payment_and_delivery_states(): void
+    {
+        $path = '/gestion/commerce-test/operacion';
+        $sale = ['action' => 'pos_sale', 'key' => (string) Str::uuid(), ...$this->orderData(15000), 'delivered_now' => true];
+        $this->post($path, $sale)->assertSessionHasNoErrors();
+        $this->post($path, $sale)->assertSessionHasNoErrors();
+        $this->post($path, [...$sale, 'key' => (string) Str::uuid(), 'delivered_now' => false, 'customer_name' => 'Recojo'])->assertSessionHasNoErrors();
+        $this->assertSame(2, DB::table('orders')->where('tenant_id', $this->tenant)->count());
+        $this->assertSame(1, DB::table('order_events')->where('tenant_id', $this->tenant)->where('kind', 'delivery_delivered')->count());
+
+        $today = now('America/Lima')->toDateString();
+        $this->get("$path/pedidos?channel=pos&delivery_status=delivered&payment_status=paid&from=$today&to=$today")
+            ->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('data.orders.data', 1)
+            ->where('data.orders.data.0.delivery_status', 'delivered')
+            ->where('data.orders.data.0.payment_status', 'paid'));
+        $this->get("$path/pedidos?to=$today&delivery_status=pending")
+            ->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('data.orders.data', 1)
+            ->where('data.orders.data.0.customer_name', 'Recojo'));
+        $this->get("$path/pedidos?channel=web")->assertOk()->assertInertia(fn (AssertableInertia $page) => $page->has('data.orders.data', 0));
+    }
+
+    public function test_restock_uses_warehouse_availability_and_keeps_names_beyond_picker_limit(): void
+    {
+        DB::table('products')->insert(array_map(fn ($i) => ['tenant_id' => $this->tenant, 'name' => "A $i", 'sku' => "A-$i", 'price_minor' => 100], range(1, 500)));
+        DB::table('products')->where('tenant_id', $this->tenant)->where('id', $this->product)->update(['minimum_stock' => 1]);
+        DB::table('stock_positions')->where('tenant_id', $this->tenant)->where('product_id', $this->product)->update(['offline' => 1]);
+        $other = DB::table('warehouses')->insertGetId(['tenant_id' => $this->tenant, 'name' => 'Otro', 'branch' => 'Local']);
+        DB::table('stock_positions')->insert(['tenant_id' => $this->tenant, 'warehouse_id' => $other, 'product_id' => $this->product]);
+
+        $path = '/gestion/commerce-test/operacion/inventario?stock=restock';
+        $this->get($path.'&warehouse='.$this->warehouse)->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('data.products', 500)
+            ->has('data.stock', 1)
+            ->where('data.stock.0.product_name', 'Producto')
+            ->where('data.stock.0.available', 1)
+            ->where('data.movements.0.product_name', 'Producto'));
+        $this->get($path.'&warehouse='.$other)->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('data.stock', 1)
+            ->where('data.stock.0.warehouse_name', 'Otro')
+            ->where('data.stock.0.available', 0));
+    }
+
     public function test_history_cannot_be_rewritten_even_with_runtime_sql(): void
     {
         $this->expectException(QueryException::class);

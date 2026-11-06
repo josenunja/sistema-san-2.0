@@ -61,8 +61,12 @@ function add() {
 </script>
 <template>
     <Head :title="product.name" />
-    <main class="mx-auto min-h-screen max-w-6xl p-6 py-10 text-slate-900">
-        <Link :href="`/tienda/${tenant.slug}`" class="text-sm text-emerald-700"
+    <main
+        class="mx-auto min-h-screen max-w-6xl p-6 py-10 text-slate-900 dark:text-slate-100"
+    >
+        <Link
+            :href="`/tienda/${tenant.slug}`"
+            class="text-sm text-emerald-700 dark:text-emerald-300"
             >← {{ tenant.name }}</Link
         >
         <div class="mt-8 grid gap-10 md:grid-cols-2">
@@ -96,7 +100,9 @@ function add() {
                 </div>
             </section>
             <section>
-                <p class="text-xs tracking-widest text-slate-500">
+                <p
+                    class="text-xs tracking-widest text-slate-600 dark:text-slate-300"
+                >
                     {{ product.category }} · {{ product.sku }}
                 </p>
                 <div class="mt-4 flex flex-wrap gap-2">
@@ -126,20 +132,22 @@ function add() {
                 </h1>
                 <p
                     v-if="product.compare_at_minor"
-                    class="mt-6 text-base text-slate-400 line-through"
+                    class="mt-6 text-base text-slate-600 line-through dark:text-slate-300"
                 >
                     {{ money(product.compare_at_minor) }}
                 </p>
                 <p
                     class="text-3xl font-semibold"
                     :class="
-                        product.compare_at_minor ? 'mt-1 text-red-700' : 'mt-6'
+                        product.compare_at_minor
+                            ? 'mt-1 text-red-700 dark:text-red-300'
+                            : 'mt-6'
                     "
                 >
                     {{ money(product.price_minor) }}
                 </p>
                 <p
-                    class="mt-5 leading-relaxed whitespace-pre-wrap text-slate-500"
+                    class="mt-5 leading-relaxed whitespace-pre-wrap text-slate-600 dark:text-slate-300"
                 >
                     {{ product.description }}
                 </p>
@@ -153,7 +161,7 @@ function add() {
                             class="rounded-xl border px-4 py-3 text-sm"
                             :class="
                                 v.id === product.id
-                                    ? 'border-emerald-800 bg-emerald-50'
+                                    ? 'border-emerald-800 bg-emerald-50 dark:border-emerald-300 dark:bg-emerald-950'
                                     : ''
                             "
                             ><strong class="block">{{
@@ -161,7 +169,8 @@ function add() {
                                     .filter(Boolean)
                                     .join(' · ') || v.name
                             }}</strong>
-                            <small class="mt-1 block text-xs text-slate-500"
+                            <small
+                                class="mt-1 block text-xs text-slate-600 dark:text-slate-300"
                                 >{{ money(v.price_minor) }} ·
                                 {{
                                     v.available > 0
@@ -172,7 +181,7 @@ function add() {
                         >
                     </div>
                 </div>
-                <p class="mt-6 text-sm text-slate-500">
+                <p class="mt-6 text-sm text-slate-600 dark:text-slate-300">
                     {{ available }} unidades disponibles entre nuestros
                     almacenes.
                 </p>
@@ -192,7 +201,11 @@ function add() {
                         {{ available > 0 ? 'Añadir al carrito' : 'Agotado' }}
                     </button>
                 </form>
-                <p v-if="error" role="alert" class="mt-3 text-sm text-red-700">
+                <p
+                    v-if="error"
+                    role="alert"
+                    class="mt-3 text-sm text-red-700 dark:text-red-300"
+                >
                     {{ error }}
                 </p>
             </section>

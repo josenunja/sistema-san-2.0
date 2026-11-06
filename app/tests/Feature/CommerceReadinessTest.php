@@ -124,6 +124,7 @@ class CommerceReadinessTest extends TestCase
         $other = DB::table('warehouses')->insertGetId(['tenant_id' => $this->tenant, 'name' => 'Restringido', 'branch' => 'Otra']);
         DB::table('memberships')->where('tenant_id', $this->tenant)->update(['role' => 'warehouse', 'warehouse_ids' => json_encode([$other])]);
         $this->get('/gestion/readiness/operacion/inventario')->assertInertia(fn (Assert $page) => $page->has('warehouses', 1)->where('warehouses.0.id', $other)->has('data.stock', 0));
+        $this->get('/gestion/readiness/operacion/inventario?stock=restock&warehouse='.$this->warehouse)->assertForbidden();
         $this->post('/gestion/readiness/operacion', ['action' => 'receipt', 'key' => (string) Str::uuid(), 'warehouse_id' => $this->warehouse, 'product_id' => $this->product, 'quantity' => 1, 'unit_cost_minor' => 1, 'supplier' => 'Demo', 'reference' => 'DENIED'])->assertForbidden();
         $this->assertSame(10, (int) DB::table('stock_positions')->value('physical'));
     }

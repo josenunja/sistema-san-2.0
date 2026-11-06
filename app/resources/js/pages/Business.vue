@@ -2,14 +2,23 @@
 import { computed, reactive, ref } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import BusinessShell from '@/components/BusinessShell.vue';
+import BusinessOrders from '@/components/BusinessOrders.vue';
+import BusinessPagination from '@/components/BusinessPagination.vue';
 import ProductSearch from '@/components/ProductSearch.vue';
 import OperationalOptions from '@/components/OperationalOptions.vue';
 import BusinessAdministration from '@/components/BusinessAdministration.vue';
 import PurchaseDocumentForm from '@/components/PurchaseDocumentForm.vue';
+import SalesDashboard from '@/components/SalesDashboard.vue';
 import InvitationList, {
     type Invitation,
 } from '@/components/InvitationList.vue';
 import { money, minor, state, localDate } from '@/lib/commerce';
+import type {
+    OrderFilters,
+    OrderListItem,
+    PageLink,
+    SalesReport,
+} from '@/types/business';
 
 type Row = Record<string, string | number | boolean | null>;
 type Warehouse = { id: number; name: string; branch: string };
@@ -88,7 +97,7 @@ const historyPages = computed(
     () =>
         (props.data.pages || []) as {
             label: string;
-            links: { url: string | null; label: string; active: boolean }[];
+            links: PageLink[];
         }[],
 );
 async function findCustomer() {
@@ -642,6 +651,7 @@ function send(action: string, data: Record<string, unknown>) {
                 if (action === 'pos_sale') {
                     cart.value = [];
                     sale.cash = '';
+                    sale.delivered_now = true;
                     sale.received = '';
                     sale.digital = '';
                     sale.reference = '';
@@ -688,6 +698,7 @@ const cart = ref<{ product_id: number; quantity: number }[]>([]);
 const picker = ref('');
 const units = ref(1);
 const sale = reactive({
+    delivered_now: true,
     warehouse_id: '',
     cash_session_id: '',
     customer_id: '',
@@ -768,6 +779,7 @@ function sell() {
                     : sale.customer_name,
             phone: sale.phone,
             delivery_method: 'pickup',
+            delivered_now: sale.delivered_now,
             items: cart.value,
             cash_minor: minor(sale.cash || '0'),
             cash_received_minor: minor(sale.received || sale.cash || '0'),
@@ -794,14 +806,25 @@ function sell() {
     }
 }
 const rows = (name: string) => (props.data[name] || []) as Row[];
-const report = computed(() => (props.data.report || {}) as Row);
+const report = computed(() => props.data.report as SalesReport | undefined);
 const orders = computed(
     () =>
         (props.data.orders || { data: [], links: [] }) as {
-            data: Row[];
-            links: { url: string | null; label: string; active: boolean }[];
+            data: OrderListItem[];
+            links: PageLink[];
         },
 );
+const orderFilters = computed(
+    () => (props.data.orderFilters || {}) as OrderFilters,
+);
+const stockFilters = computed(
+    () =>
+        (props.data.stockFilters || {}) as {
+            warehouse?: string;
+            stock?: 'restock';
+        },
+);
+const stockLinks = computed(() => (props.data.stockLinks || []) as PageLink[]);
 const titles: Record<string, string> = {
     resumen: 'Tu negocio, en números',
     inventario: 'Inventario y almacenes',
@@ -814,20 +837,6 @@ const titles: Record<string, string> = {
     configuracion: 'La identidad de tu tienda',
     auditoria: 'Historial de actividad',
 };
-const reportCards = [
-    ['Ventas brutas', 'gross_minor'],
-    ['Descuentos', 'discount_minor'],
-    ['Devoluciones', 'returns_minor'],
-    ['Ventas netas', 'net_minor'],
-    ['Cobros verificados', 'collections_minor'],
-    ['Reembolsos', 'refunds_minor'],
-    ['Deuda actual', 'debt_minor'],
-    ['Costo de ventas', 'cost_minor'],
-    ['Utilidad bruta parcial', 'gross_profit_minor'],
-    ['Gastos registrados', 'expenses_minor'],
-    ['Pérdidas de inventario', 'inventory_loss_minor'],
-    ['Resultado gerencial parcial', 'management_result_minor'],
-];
 </script>
 
 <template>
@@ -848,15 +857,19 @@ const reportCards = [
             @selected="foundProduct"
         />
         <OperationalOptions :tenant="tenant" :data="data" :section="section" />
-        <p class="mb-2 text-xs font-semibold tracking-widest text-emerald-700">
-            GESTIÓN EMPRESARIAL
-        </p>
-        <h1 class="text-3xl font-semibold tracking-tight">
-            {{ titles[section] }}
-        </h1>
-        <p class="mt-3 text-sm text-slate-500">
-            Importes en soles · Hora de Lima · {{ tenant.name }}
-        </p>
+        <template v-if="section !== 'resumen'">
+            <p
+                class="mb-2 text-xs font-semibold tracking-widest text-emerald-700"
+            >
+                GESTIÓN EMPRESARIAL
+            </p>
+            <h1 class="text-3xl font-semibold tracking-tight">
+                {{ titles[section] }}
+            </h1>
+            <p class="mt-3 text-sm text-slate-500">
+                Importes en soles · Hora de Lima · {{ tenant.name }}
+            </p>
+        </template>
         <p
             v-if="page.props.success"
             role="status"
@@ -871,7 +884,7 @@ const reportCards = [
         >
             <p v-for="(error, name) in errors" :key="name">{{ error }}</p>
         </div>
-        <div class="my-7 flex flex-wrap gap-3">
+        <div v-if="actions.length" class="my-7 flex flex-wrap gap-3">
             <button
                 v-for="a in actions"
                 :key="a.action"
@@ -958,47 +971,11 @@ const reportCards = [
             </div>
         </form>
 
-        <template v-if="section === 'resumen'"
-            ><form method="get" class="mb-7 flex flex-wrap items-end gap-4">
-                <label class="grid gap-2 text-sm"
-                    >Desde<input
-                        type="date"
-                        name="from"
-                        :value="report.from"
-                        class="rounded-xl border bg-white p-3" /></label
-                ><label class="grid gap-2 text-sm"
-                    >Hasta<input
-                        type="date"
-                        name="to"
-                        :value="report.to"
-                        class="rounded-xl border bg-white p-3" /></label
-                ><button class="rounded-xl bg-slate-900 p-3 text-white">
-                    Aplicar periodo
-                </button>
-            </form>
-            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <article
-                    v-for="[label, value] in reportCards"
-                    :key="value"
-                    class="metric-card rounded-2xl border bg-white p-6"
-                >
-                    <p class="text-sm text-slate-500">{{ label }}</p>
-                    <p class="mt-3 text-3xl font-semibold">
-                        {{
-                            report[value] === null
-                                ? 'Costo incompleto'
-                                : money(Number(report[value] || 0))
-                        }}
-                    </p>
-                </article>
-            </div>
-            <p class="mt-6 text-sm leading-relaxed text-slate-500">
-                La utilidad es gerencial y bruta: no incluye gastos ni ajustes
-                tributarios. Las devoluciones y los cobros se cuentan en la
-                fecha en que se registran. La deuda muestra el saldo actual de
-                todas las ventas.
-            </p></template
-        >
+        <SalesDashboard
+            v-if="section === 'resumen' && report"
+            :tenant="tenant"
+            :report="report"
+        />
 
         <template v-if="section === 'pos'"
             ><div class="grid gap-6 xl:grid-cols-2">
@@ -1374,6 +1351,20 @@ const reportCards = [
                             negocio.</label
                         >
                     </fieldset>
+                    <label class="grid gap-2">
+                        Entrega de productos
+                        <select
+                            v-model="sale.delivered_now"
+                            class="rounded-lg border p-3"
+                        >
+                            <option :value="true">
+                                El cliente se los lleva ahora
+                            </option>
+                            <option :value="false">
+                                Quedan pendientes de recojo
+                            </option>
+                        </select>
+                    </label>
                     <button
                         :disabled="busy || !cart.length"
                         class="rounded-xl bg-emerald-800 p-4 font-semibold text-white disabled:opacity-50"
@@ -1394,67 +1385,67 @@ const reportCards = [
             </p></template
         >
 
-        <template v-if="section === 'pedidos'"
-            ><div class="overflow-x-auto rounded-2xl border bg-white">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-slate-50 text-slate-500">
-                        <tr>
-                            <th class="p-4">Referencia</th>
-                            <th class="p-4">Cliente</th>
-                            <th class="p-4">Canal</th>
-                            <th class="p-4">Estado</th>
-                            <th class="p-4">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        <tr v-for="o in orders.data" :key="String(o.id)">
-                            <td class="p-4">
-                                <Link
-                                    :href="`/gestion/${tenant.slug}/pedido/${o.id}`"
-                                    class="font-semibold text-emerald-700"
-                                    >{{ String(o.id).slice(0, 8) }} ↗</Link
-                                >
-                            </td>
-                            <td class="p-4">{{ o.customer_name }}</td>
-                            <td class="p-4">{{ state(o.channel) }}</td>
-                            <td class="p-4">{{ state(o.status) }}</td>
-                            <td class="p-4">
-                                {{ money(Number(o.total_minor)) }}
-                            </td>
-                        </tr>
-                        <tr v-if="!orders.data.length">
-                            <td
-                                colspan="5"
-                                class="p-12 text-center text-slate-400"
-                            >
-                                Todavía no hay pedidos ni ventas.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <nav class="mt-5 flex gap-3">
-                <template v-for="(l, i) in orders.links" :key="i"
-                    ><Link
-                        v-if="l.url"
-                        :href="l.url"
-                        class="rounded-lg border bg-white p-3"
-                        >{{
-                            i === 0
-                                ? 'Anterior'
-                                : i === orders.links.length - 1
-                                  ? 'Siguiente'
-                                  : l.label
-                        }}</Link
-                    ></template
-                >
-            </nav></template
-        >
+        <BusinessOrders
+            v-if="section === 'pedidos'"
+            :slug="tenant.slug"
+            :orders="orders"
+            :filters="orderFilters"
+        />
 
-        <template v-if="section === 'inventario'"
-            ><h2 class="mb-4 text-lg font-semibold">Existencias por almacén</h2>
+        <template v-if="section === 'inventario'">
+            <h2 class="mb-2 text-lg font-semibold">Existencias por almacén</h2>
+            <p class="mb-4 text-sm text-slate-600">
+                Por reponer reúne los productos activos registrados en cada
+                almacén cuyo saldo disponible llegó al mínimo o a cero.
+            </p>
+            <form
+                :action="`/gestion/${tenant.slug}/operacion/inventario`"
+                method="get"
+                aria-label="Filtrar existencias"
+                class="mb-4 flex flex-wrap items-end gap-3 rounded-2xl border bg-white p-4"
+            >
+                <div class="grid gap-1 text-sm">
+                    <label for="inventory-filter-warehouse">Almacén</label>
+                    <select
+                        id="inventory-filter-warehouse"
+                        name="warehouse"
+                        :value="stockFilters.warehouse || ''"
+                        class="max-w-full rounded-lg border p-2"
+                    >
+                        <option value="">Todos los almacenes</option>
+                        <option
+                            v-for="warehouse in warehouses"
+                            :key="warehouse.id"
+                            :value="warehouse.id"
+                        >
+                            {{ warehouse.name }}
+                        </option>
+                    </select>
+                </div>
+                <div class="grid gap-1 text-sm">
+                    <label for="inventory-filter-stock">Vista</label>
+                    <select
+                        id="inventory-filter-stock"
+                        name="stock"
+                        :value="stockFilters.stock || ''"
+                        class="rounded-lg border p-2"
+                    >
+                        <option value="">Todas las existencias</option>
+                        <option value="restock">Por reponer</option>
+                    </select>
+                </div>
+                <button
+                    type="submit"
+                    class="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white"
+                >
+                    Filtrar existencias
+                </button>
+            </form>
             <div class="overflow-auto rounded-2xl border bg-white">
-                <table class="w-full text-left text-sm">
+                <table
+                    v-if="rows('stock').length"
+                    class="w-full text-left text-sm"
+                >
                     <thead class="bg-slate-50">
                         <tr>
                             <th class="p-4">Producto</th>
@@ -1463,45 +1454,61 @@ const reportCards = [
                             <th class="p-4">Reservado</th>
                             <th class="p-4">Bloqueado</th>
                             <th class="p-4">Disponible</th>
+                            <th class="p-4">Reposición</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y">
-                        <tr v-for="(s, i) in rows('stock')" :key="i">
+                        <tr
+                            v-for="s in rows('stock')"
+                            :key="`${s.warehouse_id}-${s.product_id}`"
+                        >
                             <td class="p-4">
-                                {{
-                                    products.find(
-                                        (p) => p.id === Number(s.product_id),
-                                    )?.name
-                                }}
+                                <strong>{{ s.product_name }}</strong>
+                                <span
+                                    class="mt-1 block text-xs text-slate-600"
+                                    >{{ s.sku }}</span
+                                >
                             </td>
-                            <td class="p-4">
-                                {{
-                                    warehouses.find(
-                                        (w) => w.id === Number(s.warehouse_id),
-                                    )?.name
-                                }}
-                            </td>
+                            <td class="p-4">{{ s.warehouse_name }}</td>
                             <td class="p-4">{{ s.physical }}</td>
                             <td class="p-4">{{ s.reserved }}</td>
                             <td class="p-4">{{ s.blocked }}</td>
-                            <td class="p-4 font-semibold">
-                                {{
-                                    Number(s.physical) -
-                                    Number(s.reserved) -
-                                    Number(s.blocked) -
-                                    Number(s.offline)
-                                }}
+                            <td class="p-4 font-semibold">{{ s.available }}</td>
+                            <td class="p-4">
+                                <span
+                                    v-if="Number(s.available) === 0"
+                                    class="font-semibold text-red-800"
+                                    >Agotado</span
+                                >
+                                <span
+                                    v-else-if="
+                                        Number(s.available) <=
+                                        Number(s.minimum_stock)
+                                    "
+                                    class="font-semibold text-amber-800"
+                                    >Bajo mínimo</span
+                                >
+                                <span v-else class="text-slate-600"
+                                    >Al día</span
+                                >
+                                <small
+                                    v-if="Number(s.minimum_stock) > 0"
+                                    class="mt-1 block text-slate-600"
+                                    >Mínimo {{ s.minimum_stock }}</small
+                                >
                             </td>
                         </tr>
                     </tbody>
                 </table>
-                <p
-                    v-if="!rows('stock').length"
-                    class="p-12 text-center text-slate-400"
-                >
-                    Crea un almacén y registra tu primera recepción.
+                <p v-else class="p-8 text-center text-slate-600">
+                    {{
+                        stockFilters.stock === 'restock'
+                            ? 'No hay productos por reponer en los almacenes seleccionados.'
+                            : 'Todavía no hay existencias registradas en los almacenes seleccionados.'
+                    }}
                 </p>
             </div>
+            <BusinessPagination label="existencias" :links="stockLinks" />
             <h2 class="mt-9 mb-4 text-lg font-semibold">Últimos movimientos</h2>
             <div class="divide-y rounded-2xl border bg-white">
                 <div
@@ -1512,11 +1519,7 @@ const reportCards = [
                     <span>{{ localDate(String(m.created_at)) }}</span
                     ><strong>{{ state(m.kind) }}</strong
                     ><span
-                        >{{
-                            products.find((p) => p.id === Number(m.product_id))
-                                ?.name
-                        }}
-                        · {{ m.quantity }} unidades</span
+                        >{{ m.product_name }} · {{ m.quantity }} unidades</span
                     ><span class="text-slate-500">{{ m.reason }}</span>
                 </div>
             </div></template

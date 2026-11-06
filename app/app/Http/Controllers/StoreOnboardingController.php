@@ -96,6 +96,7 @@ class StoreOnboardingController extends Controller
         ]);
 
         foreach ($data['business_hours'] ?? [] as $index => $hours) {
+            $data['business_hours'][$index]['closed'] = (bool) $hours['closed'];
             if (! $hours['closed'] && $hours['open'] >= $hours['close']) {
                 throw ValidationException::withMessages([
                     "business_hours.{$index}.close" => 'La hora de cierre debe ser posterior a la apertura.',

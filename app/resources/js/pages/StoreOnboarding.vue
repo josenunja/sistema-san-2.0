@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isBusinessDayClosed } from '@/lib/commerce';
 import { computed, onUnmounted, ref } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { businessTypes } from '@/lib/businessTypes';
@@ -55,7 +56,9 @@ type Settings = {
     primary_color?: string;
     accent_color?: string;
     section_order?: string[];
-    business_hours?: BusinessHour[];
+    business_hours?: (Omit<BusinessHour, 'closed'> & {
+        closed: boolean | number | string;
+    })[];
     delivery_methods?: string[];
     delivery_price?: string;
     courier_price?: string;
@@ -138,7 +141,11 @@ const form = useForm({
         'trends',
         'promotions',
     ],
-    business_hours: props.settings.business_hours || defaultHours,
+    business_hours:
+        props.settings.business_hours?.map((hours) => ({
+            ...hours,
+            closed: isBusinessDayClosed(hours.closed),
+        })) || defaultHours,
     delivery_methods: props.settings.delivery_methods || ['pickup'],
     delivery_price: props.settings.delivery_price || '',
     courier_price: props.settings.courier_price || '',

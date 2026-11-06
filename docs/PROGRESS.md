@@ -1,5 +1,41 @@
 # Estado verificable — 17 de octubre de 2026
 
+## Mejoras de tienda, caja e inventario del 05/11/2026
+
+Los horarios guardan booleanos y el editor y la tienda interpretan también las versiones antiguas guardadas como cadenas. La ficha pública adapta el contraste al tema oscuro. Caja permite elegir entrega inmediata o recojo pendiente. La entrega inmediata se registra en la misma operación y añade un evento al historial. Las ventas anteriores conservan el estado de entrega registrado.
+
+Pedidos permite filtrar por fechas de Lima, canal, estado del pedido, pago y entrega. Inventario pagina las existencias, obtiene los nombres de los productos de cada registro y ofrece la vista Por reponer para productos activos registrados en cada almacén. Resumen incorpora el reparto de ventas confirmadas por canal y los diez productos con mayor importe después de descuentos, ambos antes de devoluciones. El ranking excluye el importe de entrega y solo muestra margen con costo completo. La deuda se calcula en una consulta agrupada que toma los pagos verificados.
+
+En PostgreSQL `sas_san_test` con `sas_runtime` aprobaron 116 pruebas, 1312 aserciones y cinco carreras. Pint, PHPStan, formato, lint, tipos de Vue y compilación aprobaron. Playwright en el puerto 8104 comprobó la ficha en ambos temas a 390 px, el borrador con seis días abiertos y uno cerrado, las dos modalidades de entrega en ventas ficticias, los filtros de pedidos y reposición y el nuevo desglose del resumen. Pedidos, Inventario y Resumen se comprobaron sin desbordamiento a 390 px. No se requirieron migraciones.
+
+## Revisión de tienda y operación del 05/11/2026
+
+Playwright reprodujo tres problemas en el servidor aislado del puerto 8104, con PostgreSQL `sas_san_test` y datos ficticios. La ficha pública conserva el texto oscuro del título sobre fondo oscuro. El editor mostró un día cerrado y la vista previa privada mostró siete después de guardar el borrador, porque el formulario conserva `closed` como cadenas `"0"` y `"1"` que Vue interpreta como verdaderas. Una venta de caja confirmada quedó con entrega pendiente y mostró el mensaje de preparación de pedido. La revisión no cambió el código de la aplicación ni los datos reales.
+
+La lectura del código identificó dos pendientes de escala. La tabla de existencias intenta obtener el nombre de cada producto a partir de una lista inicial limitada a 500 productos activos. El resumen carga todo el historial confirmado y consulta por separado los pagos de cada venta para calcular la deuda. Falta medir el rendimiento con un volumen representativo. La lista de pedidos puede incorporar estado de entrega y filtros, el inventario puede reunir las alertas de reposición que ya aparecen en el catálogo y el resumen puede añadir ventas por canal y por producto.
+
+## Panel de ventas con comparaciones e indicadores
+
+El resumen del propietario tiene un diseño adaptable, filtro por fechas, indicadores de ventas netas, cobros, cantidad de ventas y ticket promedio. Incluye evolución interactiva de ventas confirmadas, variación frente a un período previo de igual duración, margen bruto, devoluciones sobre ventas brutas y reparto de cobros verificados por método. Los importes siguen en céntimos y los límites de los períodos se aplican en hora de Lima. La variación queda sin porcentaje cuando el período anterior no tiene ventas netas positivas.
+
+Validación en PostgreSQL `sas_san_test` como `sas_runtime`. Aprobaron 114 pruebas y 1236 aserciones, incluidas ventas en los límites de día y cobros verificados separados de los pendientes. Aprobaron cinco pruebas de concurrencia, PHPStan, formato, lint, TypeScript y compilación. Playwright comprobó el filtro, la gráfica, los porcentajes, el estado vacío y el diseño en escritorio y móvil con cifras ficticias. Capturas en `output/demostracion/dashboard-ventas.png` y `output/demostracion/dashboard-ventas-movil.png`.
+
+## Demostración de inventario y venta en caja
+
+En el servidor aislado del puerto 8103, Playwright inició sesión con MFA como propietario ficticio de Casa Olivo Demo. Desde las pantallas de la aplicación publicó Camiseta Olivo a S/ 35.00, recibió 20 unidades, abrió caja con S/ 100.00 y confirmó una venta en efectivo de tres unidades por S/ 105.00. El historial registró la recepción y la salida. Inventario mostró 17 unidades físicas y disponibles y la tienda pública mostró las mismas 17 en una sesión de visitante. Evidencia en `output/demostracion/inventario-demo-saldo-17.png` y `output/demostracion/inventario-demo-venta-105.png`. Los registros son ficticios y se guardaron en `sas_san_test` con `sas_runtime`.
+
+## Vitrina pública para tiendas nuevas
+
+El catálogo público y la vista previa guardada usan una portada con identidad de la tienda. El área visual muestra la portada configurada, una foto de un producto disponible o el logotipo y la inicial de la marca, en ese orden. La portada respeta los estilos seleccionados y ofrece accesos al catálogo, entrega y seguimiento. Una tienda sin productos publicados presenta un estado de bienvenida. Una búsqueda vacía ofrece volver al catálogo y el carrito previo sigue accesible si contiene artículos.
+
+Compilación, formato, lint y TypeScript aprobados. Playwright comprobó la vitrina vacía y con un producto ilustrado, tamaños de escritorio y móvil, navegación, búsqueda sin coincidencias, carrito y cotización. Las tiendas de demostración se crearon en `sas_san_test` como `sas_runtime` y se sirvieron en el puerto 8103. Las capturas están en `output/demostracion`.
+
+## Cambios de GitHub incorporados localmente el 05/11/2026
+
+La copia Git de trabajo avanzó de `1210211` a `5a0933c` en `origin/main`. Se incorporaron los 22 archivos de `db871f3`, `03146aa` y `5a0933c` al proyecto local. La comparación de los 490 archivos de la revisión coincidió antes de añadir esta entrada. La rama de endurecimiento ya era ancestro de `main`.
+
+Los cambios corrigen el QR de MFA, permiten configurar su exigencia fuera de producción, conducen instalaciones locales vacías a `/instalacion` y preparan copias nuevas en modo plataforma por defecto. Aprobaron la compilación, TypeScript, PHPStan y 113 pruebas con 1215 aserciones en `sas_san_test`, además de cinco pruebas de concurrencia. La revisión automática rechazó ejecutar `iniciar.ps1` contra la instalación principal por la posibilidad de aplicar migraciones sobre la base real. La comprobación se realizó en la base aislada de pruebas.
+
 ## Preparación de publicación autorizada - 01/11/2026
 
 El usuario pidió subir el proyecto actualizado a GitHub. Fetch confirmó main sin commits remotos pendientes respecto de 1187675 antes de sincronizar. Se prepara la publicación de navegación de administración general, acceso desde tienda pública, guía de modalidades, manual completo PDF/Markdown y evidencia sintética. El manifiesto de publicación excluye entornos privados, usuarios, claves, bases, respaldos y capturas reales. Las cuentas locales no se transfieren a GitHub ni a otras instalaciones.

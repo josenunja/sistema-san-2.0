@@ -146,7 +146,7 @@ class StoreOnboardingTest extends TestCase
             'ends_at' => now()->addWeek(),
         ]);
         $hours = collect(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
-            ->map(fn (string $day) => ['day' => $day, 'open' => '09:00', 'close' => '18:00', 'closed' => $day === 'sunday'])
+            ->map(fn (string $day) => ['day' => $day, 'open' => '09:00', 'close' => '18:00', 'closed' => $day === 'sunday' ? '1' : '0'])
             ->all();
 
         $this->actingAs($this->owner)
@@ -188,6 +188,7 @@ class StoreOnboardingTest extends TestCase
         $this->assertSame(1200, $settings['courier_minor']);
         $this->assertSame(1890, $settings['shipping_minor']);
         $this->assertSame('BIENVENIDA10', $settings['featured_coupon_code']);
+        $this->assertSame([false, false, false, false, false, false, true], array_column($settings['business_hours'], 'closed'));
         Storage::disk('local')->assertExists($settings['logo_path']);
         Storage::disk('local')->assertExists($settings['banner_path']);
 

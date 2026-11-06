@@ -14,10 +14,13 @@ import {
     ShoppingBag,
     Sparkles,
     MapPin,
+    Store,
+    Truck,
 } from '@lucide/vue';
 import BusinessShell from '@/components/BusinessShell.vue';
 import StoreManagementAccess from '@/components/StoreManagementAccess.vue';
-import { money, minor, jsonPost } from '@/lib/commerce';
+import { money, minor, jsonPost, isBusinessDayClosed } from '@/lib/commerce';
+import { businessTypes } from '@/lib/businessTypes';
 type Product = {
     id: number;
     sku: string;
@@ -49,6 +52,8 @@ const props = defineProps<{
     search: string;
     products: {
         data: Product[];
+        total: number;
+        last_page: number;
         links: { url: string | null; label: string; active: boolean }[];
     };
     warehouses: { id: number; name: string; branch: string }[];
@@ -87,7 +92,7 @@ const props = defineProps<{
             day: string;
             open: string;
             close: string;
-            closed: boolean;
+            closed: boolean | number | string;
         }[];
         custom_domain?: string | null;
         marketplace_url?: string;
@@ -324,6 +329,32 @@ const fashionBusiness = computed(() =>
             (page.props.singleBusiness ? 'general' : 'fashion'),
     ),
 );
+const hasFilters = computed(() =>
+    Boolean(props.search || props.category || props.section),
+);
+const launching = computed(
+    () => !props.managing && !hasFilters.value && props.products.total === 0,
+);
+const showCart = computed(
+    () => !props.managing && (!launching.value || count.value > 0),
+);
+const storeCategory = computed(
+    () =>
+        businessTypes.find(
+            (type) => type.value === props.settings.business_type,
+        )?.label || 'Comercio general',
+);
+const storeInitial = computed(
+    () =>
+        Array.from(props.tenant.name.trim())[0]?.toLocaleUpperCase('es') || 'S',
+);
+const vitrineProduct = computed(() =>
+    hasFilters.value
+        ? undefined
+        : props.products.data.find(
+              (product) => product.image_url && available(product.id) > 0,
+          ),
+);
 const sectionDefinitions = {
     all: { label: 'Todo', icon: LayoutGrid, query: '' },
     women: { label: 'Mujer', icon: Sparkles, query: 'women' },
@@ -467,7 +498,10 @@ const themeEyebrow = computed(() =>
                     <Link v-else href="/">Inicio</Link>
                     <Link :href="`/tienda/${tenant.slug}/seguimiento`"
                         >Seguir mi pedido</Link
-                    ><a href="#carrito" class="storefront-cart-link"
+                    ><a
+                        v-if="showCart"
+                        href="#carrito"
+                        class="storefront-cart-link"
                         ><ShoppingBag :size="16" />Carrito
                         <span class="storefront-cart-count">{{
                             count
@@ -480,58 +514,133 @@ const themeEyebrow = computed(() =>
         </header>
         <div :class="managing ? '' : 'mx-auto max-w-7xl p-6 lg:p-10'">
             <template v-if="!managing">
-                <section
-                    class="storefront-hero mb-10 rounded-3xl px-8 py-12 text-white md:px-12"
-                    :class="{ 'has-custom-banner': settings.banner_url }"
-                    :style="
-                        settings.banner_url
-                            ? {
-                                  backgroundImage: `linear-gradient(90deg, ${theme}f2 0%, ${theme}b8 55%, ${theme}52 100%), url(${settings.banner_url})`,
-                              }
-                            : { backgroundColor: theme }
-                    "
-                >
+                <section class="storefront-hero storefront-vitrine text-white">
                     <div class="storefront-theme-particles" aria-hidden="true">
                         <span v-for="particle in 8" :key="particle"></span>
                     </div>
-                    <p class="text-xs tracking-widest opacity-70">
-                        {{ themeEyebrow }}
-                    </p>
-                    <h1 class="mt-5 text-4xl font-semibold md:text-5xl">
-                        {{ tenant.name }}
-                    </h1>
-                    <p class="mt-5 max-w-2xl text-lg opacity-80">
-                        {{
-                            settings.tagline ||
-                            'Encuentra lo que buscas. Haz tu pedido y coordina directamente con nuestro negocio.'
-                        }}
-                    </p>
-                    <p
-                        v-if="settings.description"
-                        class="storefront-description"
-                    >
-                        {{ settings.description }}
-                    </p>
-                    <span v-if="settings.location" class="storefront-location"
-                        ><MapPin :size="14" /> {{ settings.location }}</span
-                    >
-                    <div v-if="featuredCoupon" class="storefront-coupon">
-                        <BadgePercent :size="18" />
-                        <span>
-                            <small>CUPÓN DESTACADO</small>
-                            <strong>{{ featuredCoupon.code }}</strong>
-                        </span>
-                        <span>
+                    <div class="storefront-vitrine-copy">
+                        <div class="storefront-vitrine-eyebrow">
+                            <span></span>{{ themeEyebrow }}
+                        </div>
+                        <h1>{{ tenant.name }}</h1>
+                        <p class="storefront-vitrine-lead">
                             {{
-                                featuredCoupon.amount_minor
-                                    ? money(featuredCoupon.amount_minor)
-                                    : `${featuredCoupon.percent}%`
+                                settings.tagline ||
+                                (launching
+                                    ? 'Un nuevo espacio para descubrir lo que hacemos.'
+                                    : 'Descubre nuestra selección y elige cómo recibir tu pedido.')
                             }}
-                            de descuento
-                        </span>
+                        </p>
+                        <p
+                            v-if="settings.description"
+                            class="storefront-vitrine-description"
+                        >
+                            {{ settings.description }}
+                        </p>
+                        <span
+                            v-if="settings.location"
+                            class="storefront-location"
+                            ><MapPin :size="14" /> {{ settings.location }}</span
+                        >
+                        <a href="#catalogo" class="storefront-vitrine-cta">
+                            {{
+                                launching
+                                    ? 'Conoce la tienda'
+                                    : 'Explorar catálogo'
+                            }}
+                            <ArrowRight :size="17" />
+                        </a>
+                        <div v-if="featuredCoupon" class="storefront-coupon">
+                            <BadgePercent :size="18" />
+                            <span
+                                ><small>CUPÓN DESTACADO</small
+                                ><strong>{{
+                                    featuredCoupon.code
+                                }}</strong></span
+                            >
+                            <span
+                                >{{
+                                    featuredCoupon.amount_minor
+                                        ? money(featuredCoupon.amount_minor)
+                                        : `${featuredCoupon.percent}%`
+                                }}
+                                de descuento</span
+                            >
+                        </div>
+                    </div>
+                    <div class="storefront-vitrine-art">
+                        <img
+                            v-if="settings.banner_url"
+                            :src="settings.banner_url"
+                            alt=""
+                            class="storefront-vitrine-banner"
+                        />
+                        <template v-else-if="vitrineProduct?.image_url">
+                            <img
+                                :src="vitrineProduct.image_url"
+                                :alt="vitrineProduct.name"
+                                class="storefront-vitrine-product"
+                            />
+                            <div class="storefront-vitrine-caption">
+                                <span>EN LA VITRINA</span
+                                ><strong>{{ vitrineProduct.name }}</strong>
+                            </div>
+                        </template>
+                        <div
+                            v-else
+                            class="storefront-vitrine-identity"
+                            aria-hidden="true"
+                        >
+                            <div class="storefront-vitrine-label">
+                                <Store :size="17" /> VITRINA DIGITAL
+                            </div>
+                            <div class="storefront-vitrine-mark">
+                                <img
+                                    v-if="settings.logo_url"
+                                    :src="settings.logo_url"
+                                    alt=""
+                                />
+                                <span v-else>{{ storeInitial }}</span>
+                            </div>
+                            <div class="storefront-vitrine-category">
+                                <Sparkles :size="15" /> {{ storeCategory }}
+                            </div>
+                        </div>
                     </div>
                 </section>
+                <div v-if="!preview" class="storefront-guide">
+                    <a href="#catalogo"
+                        ><ShoppingBag :size="19" /><span
+                            ><strong>La vitrina</strong
+                            ><small>{{
+                                launching
+                                    ? 'Estamos preparando el catálogo'
+                                    : 'Encuentra lo que buscas'
+                            }}</small></span
+                        ></a
+                    >
+                    <a v-if="deliveryOptions.length" href="#informacion-tienda"
+                        ><Truck :size="20" /><span
+                            ><strong>Entrega y recojo</strong
+                            ><small
+                                >{{ deliveryOptions[0].label
+                                }}{{
+                                    deliveryOptions.length > 1
+                                        ? ` y ${deliveryOptions.length - 1} más`
+                                        : ''
+                                }}</small
+                            ></span
+                        ></a
+                    >
+                    <Link :href="`/tienda/${tenant.slug}/seguimiento`"
+                        ><Package :size="19" /><span
+                            ><strong>Seguimiento</strong
+                            ><small>Consulta tu pedido</small></span
+                        ></Link
+                    >
+                </div>
                 <nav
+                    v-if="!launching"
                     class="storefront-fashion-navigation"
                     aria-label="Secciones de la tienda"
                 >
@@ -565,7 +674,11 @@ const themeEyebrow = computed(() =>
                     tienda.
                 </p></template
             >
-            <form method="get" class="catalog-search my-7 flex gap-3">
+            <form
+                v-if="!launching"
+                method="get"
+                class="catalog-search my-7 flex gap-3"
+            >
                 <input
                     v-if="section"
                     type="hidden"
@@ -941,11 +1054,45 @@ const themeEyebrow = computed(() =>
             </section>
             <div
                 class="grid gap-8"
-                :class="!managing ? 'xl:grid-cols-[1fr_360px]' : ''"
+                :class="showCart ? 'xl:grid-cols-[1fr_360px]' : ''"
             >
-                <section class="min-w-0">
+                <section id="catalogo" class="min-w-0">
+                    <div v-if="launching" class="storefront-launch">
+                        <div class="storefront-launch-icon">
+                            <Package :size="28" :stroke-width="1.5" />
+                        </div>
+                        <div>
+                            <span>NUESTRA VITRINA</span>
+                            <h2>Estamos preparando el catálogo</h2>
+                            <p>
+                                Aquí podrás ver nuestros productos cuando estén
+                                publicados.
+                            </p>
+                        </div>
+                        <a v-if="!preview" href="#informacion-tienda"
+                            >Información de la tienda <ArrowRight :size="17"
+                        /></a>
+                    </div>
+                    <div
+                        v-else-if="!managing && !products.data.length"
+                        class="storefront-launch"
+                    >
+                        <div class="storefront-launch-icon">
+                            <Package :size="28" :stroke-width="1.5" />
+                        </div>
+                        <div>
+                            <h2>No encontramos productos</h2>
+                            <p>
+                                Prueba con otra búsqueda o revisa el catálogo
+                                completo.
+                            </p>
+                        </div>
+                        <Link :href="`/tienda/${tenant.slug}`"
+                            >Ver todo el catálogo <ArrowRight :size="17"
+                        /></Link>
+                    </div>
                     <p
-                        v-if="!products.data.length"
+                        v-else-if="!products.data.length"
                         class="rounded-2xl border border-dashed bg-white p-12 text-center text-slate-400"
                     >
                         Todavía no hay productos disponibles.
@@ -1062,6 +1209,7 @@ const themeEyebrow = computed(() =>
                         </article>
                     </div>
                     <nav
+                        v-if="products.last_page > 1"
                         aria-label="Paginación"
                         class="catalog-pagination mt-7 flex flex-wrap gap-3"
                     >
@@ -1083,7 +1231,7 @@ const themeEyebrow = computed(() =>
                     </nav>
                 </section>
                 <aside
-                    v-if="!managing"
+                    v-if="showCart"
                     id="carrito"
                     class="h-fit rounded-2xl border bg-white p-6 xl:sticky xl:top-6"
                 >
@@ -1413,7 +1561,11 @@ const themeEyebrow = computed(() =>
                 </aside>
             </div>
         </div>
-        <footer v-if="!managing" class="storefront-public-footer">
+        <footer
+            v-if="!managing"
+            id="informacion-tienda"
+            class="storefront-public-footer"
+        >
             <div>
                 <section v-if="settings.business_hours?.length">
                     <strong>Horario de atención</strong>
@@ -1423,7 +1575,7 @@ const themeEyebrow = computed(() =>
                     >
                         <span>{{ dayLabels[hours.day] }}</span>
                         <span>{{
-                            hours.closed
+                            isBusinessDayClosed(hours.closed)
                                 ? 'Cerrado'
                                 : `${hours.open} – ${hours.close}`
                         }}</span>

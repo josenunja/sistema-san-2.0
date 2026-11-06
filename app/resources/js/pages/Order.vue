@@ -34,6 +34,7 @@ const props = defineProps<{
     tenant: { name: string; slug: string };
     order: {
         id: string;
+        channel?: string;
         status: string;
         delivery_status: string;
         delivery_method: string;
@@ -227,6 +228,12 @@ const nextCustomerStep = computed(() => {
         return 'Registra tu constancia de pago. La tienda la revisará antes de confirmar la venta.';
     if (props.order.status === 'reserved')
         return 'El pago está cubierto. Espera que la tienda confirme la venta.';
+    if (
+        props.order.channel === 'pos' &&
+        props.order.delivery_method === 'pickup' &&
+        props.order.delivery_status === 'pending'
+    )
+        return 'La entrega en tienda está pendiente de registrar.';
     if (props.order.delivery_status === 'pending')
         return 'La venta está confirmada. La tienda empezará a preparar tu pedido.';
     if (props.order.delivery_status === 'preparing')

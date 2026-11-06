@@ -8,11 +8,13 @@ use App\Services\Invitations;
 use App\Services\Purchasing;
 use App\Services\ScheduledPrices;
 use App\Services\WarehouseAccess;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -45,11 +47,34 @@ class BusinessController extends Controller
             $data['products'] = DB::table('products')->where('tenant_id', $id)->where('archived', false)->orderBy('name')->limit(500)->get(['id', 'name', 'sku', 'barcode', 'price_minor', 'minimum_stock', 'category']);
             if ($section === 'pos') {
                 app(ScheduledPrices::class)->decorate($id, $data['products'], 'pos');
+                $data['stock'] = DB::table('stock_positions')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))->get();
             }
-            $data['stock'] = DB::table('stock_positions')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))->get();
         }
         if ($section === 'inventario') {
-            $movementPage = DB::table('stock_movements')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))->orderByDesc('id')->paginate(50, ['*'], 'movement_page')->withQueryString();
+            $filters = $request->validate(['warehouse' => 'nullable|integer|min:1', 'stock' => 'nullable|in:restock']);
+            $warehouse = isset($filters['warehouse']) ? (int) $filters['warehouse'] : null;
+            if ($warehouse !== null) {
+                app(WarehouseAccess::class)->check($id, $warehouse);
+            }
+            $available = 'stock_positions.physical - stock_positions.reserved - stock_positions.blocked - stock_positions.offline';
+            $data['stockFilters'] = $filters;
+            $stockPage = DB::table('stock_positions')
+                ->join('products', fn ($join) => $join->on('products.tenant_id', '=', 'stock_positions.tenant_id')->on('products.id', '=', 'stock_positions.product_id'))
+                ->join('warehouses', fn ($join) => $join->on('warehouses.tenant_id', '=', 'stock_positions.tenant_id')->on('warehouses.id', '=', 'stock_positions.warehouse_id'))
+                ->where('stock_positions.tenant_id', $id)
+                ->when($warehouseIds !== null, fn ($q) => $q->whereIn('stock_positions.warehouse_id', $warehouseIds))
+                ->when($warehouse !== null, fn ($q) => $q->where('stock_positions.warehouse_id', $warehouse))
+                ->when(($filters['stock'] ?? null) === 'restock', fn ($q) => $q->where('products.archived', false)->whereRaw("($available) <= products.minimum_stock"))
+                ->orderBy('products.name')->orderBy('stock_positions.product_id')->orderBy('stock_positions.warehouse_id')
+                ->paginate(25, ['stock_positions.*', 'products.name as product_name', 'products.sku', 'products.minimum_stock', 'warehouses.name as warehouse_name', DB::raw("($available) AS available")], 'stock_page')->withQueryString();
+            $data['stock'] = $stockPage->getCollection();
+            $data['stockLinks'] = $stockPage->linkCollection();
+            $movementPage = DB::table('stock_movements')
+                ->join('products', fn ($join) => $join->on('products.tenant_id', '=', 'stock_movements.tenant_id')->on('products.id', '=', 'stock_movements.product_id'))
+                ->where('stock_movements.tenant_id', $id)
+                ->when($warehouseIds !== null, fn ($q) => $q->whereIn('stock_movements.warehouse_id', $warehouseIds))
+                ->when($warehouse !== null, fn ($q) => $q->where('stock_movements.warehouse_id', $warehouse))
+                ->orderByDesc('stock_movements.id')->paginate(50, ['stock_movements.*', 'products.name as product_name'], 'movement_page')->withQueryString();
             $data['movements'] = $movementPage->getCollection();
             $pages[] = ['label' => 'Movimientos', 'links' => $movementPage->linkCollection()];
             $data['transfers'] = DB::table('transfers')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('source_id', $warehouseIds)->whereIn('destination_id', $warehouseIds))->whereRaw('received + damaged < quantity')->orderBy('id')->get();
@@ -64,7 +89,7 @@ class BusinessController extends Controller
             $pages[] = ['label' => 'Recepciones', 'links' => $receiptPage->linkCollection()];
         }
         if ($section === 'pedidos') {
-            $data['orders'] = DB::table('orders')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))->orderByDesc('created_at')->paginate(25)->withQueryString();
+            $data = [...$data, ...$this->orderList($id, $warehouseIds, $request)];
         }
         if (in_array($section, ['pos', 'caja'], true)) {
             $data['cashSessions'] = DB::table('cash_sessions')->where('tenant_id', $id)->where('user_id', $request->user()->id)->orderByDesc('id')->limit(30)->get()->map(function ($cash) use ($id) {
@@ -78,7 +103,7 @@ class BusinessController extends Controller
             $data['customers'] = DB::table('customers')->where('tenant_id', $id)->orderBy('name')->limit(500)->get();
         }
         if ($section === 'clientes') {
-            $paid = DB::table('payments')->where('tenant_id', $id)->where('status', 'verified')->groupBy('order_id')->selectRaw('order_id, sum(amount_minor) as paid_minor');
+            $paid = $this->paymentsByOrder($id);
             $history = DB::table('orders')->leftJoinSub($paid, 'paid', 'paid.order_id', '=', 'orders.id')->where('orders.tenant_id', $id)->where('orders.status', 'confirmed')->whereNotNull('customer_id')->groupBy('customer_id')->selectRaw('customer_id, count(*) as purchases_count, max(orders.created_at) as last_purchase_at, sum(total_minor-returned_minor) as spent_minor, sum(greatest(0,total_minor-returned_minor-coalesce(paid.paid_minor,0))) as debt_minor');
             $customerPage = DB::table('customers')->leftJoinSub($history, 'history', 'history.customer_id', '=', 'customers.id')->where('customers.tenant_id', $id)->when($request->filled('clientq'), fn ($q) => $q->where('customers.name', 'ilike', '%'.mb_substr((string) $request->query('clientq'), 0, 100).'%'))->orderBy('customers.name')->paginate(25, ['customers.*', 'history.purchases_count', 'history.last_purchase_at', 'history.spent_minor', 'history.debt_minor'], 'customer_page')->withQueryString();
             $data['customers'] = $customerPage->getCollection();
@@ -112,33 +137,146 @@ class BusinessController extends Controller
         return Inertia::render('Business', ['tenant' => ['id' => $tenant->id, 'name' => $tenant->name, 'slug' => $slug], 'section' => $section, 'role' => $request->attributes->get('membership')->role, 'warehouses' => DB::table('warehouses')->where('tenant_id', $id)->when($warehouseIds !== null, fn ($q) => $q->whereIn('id', $warehouseIds))->orderBy('name')->get(), 'data' => $data]);
     }
 
+    /** @param list<int>|null $warehouseIds
+     * @return array<string, mixed>
+     */
+    private function orderList(int $tenant, ?array $warehouseIds, Request $request): array
+    {
+        $filters = $request->validate([
+            'from' => 'nullable|date_format:Y-m-d',
+            'to' => ['nullable', 'date_format:Y-m-d', Rule::when($request->filled('from'), 'after_or_equal:from')],
+            'channel' => 'nullable|in:web,pos,offline',
+            'order_status' => 'nullable|in:reserved,confirmed,cancelled,expired',
+            'delivery_status' => 'nullable|in:pending,preparing,ready,delivered',
+            'payment_status' => 'nullable|in:unpaid,under_review,partial,paid,not_applicable',
+        ]);
+        $paymentStatus = "CASE
+            WHEN orders.status IN ('cancelled', 'expired') THEN 'not_applicable'
+            WHEN coalesce(paid.paid_minor, 0) >= orders.total_minor - orders.returned_minor THEN 'paid'
+            WHEN coalesce(paid.pending, 0) > 0 THEN 'under_review'
+            WHEN paid.paid_minor > 0 THEN 'partial'
+            ELSE 'unpaid' END";
+        $orders = DB::table('orders')->leftJoinSub($this->paymentsByOrder($tenant), 'paid', 'paid.order_id', '=', 'orders.id')
+            ->where('orders.tenant_id', $tenant)
+            ->when($warehouseIds !== null, fn ($q) => $q->whereIn('orders.warehouse_id', $warehouseIds))
+            ->when($filters['from'] ?? null, fn ($q, $date) => $q->where('orders.created_at', '>=', Carbon::parse($date, 'America/Lima')->startOfDay()->toIso8601String()))
+            ->when($filters['to'] ?? null, fn ($q, $date) => $q->where('orders.created_at', '<', Carbon::parse($date, 'America/Lima')->addDay()->startOfDay()->toIso8601String()))
+            ->when($filters['channel'] ?? null, fn ($q, $channel) => $q->where('orders.channel', $channel))
+            ->when($filters['order_status'] ?? null, fn ($q, $status) => $q->where('orders.status', $status))
+            ->when($filters['delivery_status'] ?? null, fn ($q, $status) => $q->where('orders.status', 'confirmed')->where('orders.delivery_status', $status))
+            ->when($filters['payment_status'] ?? null, fn ($q, $status) => $q->whereRaw("($paymentStatus) = ?", [$status]))
+            ->orderByDesc('orders.created_at')->orderByDesc('orders.id')
+            ->paginate(25, ['orders.id', 'orders.customer_name', 'orders.created_at', 'orders.channel', 'orders.status', 'orders.delivery_status', 'orders.total_minor', DB::raw("($paymentStatus) AS payment_status")])
+            ->withQueryString();
+
+        return ['orders' => $orders, 'orderFilters' => $filters];
+    }
+
+    private function paymentsByOrder(int $tenant): Builder
+    {
+        return DB::table('payments')->where('tenant_id', $tenant)->whereIn('status', ['verified', 'pending'])->groupBy('order_id')
+            ->selectRaw("order_id, SUM(amount_minor) FILTER (WHERE status = 'verified') AS paid_minor, COUNT(*) FILTER (WHERE status = 'pending') AS pending");
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function report(int $tenant, Request $request): array
     {
         $range = $request->validate(['from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d|after_or_equal:from']);
-        $from = Carbon::parse($range['from'] ?? now('America/Lima')->startOfMonth()->toDateString(), 'America/Lima')->startOfDay()->utc();
-        $to = Carbon::parse($range['to'] ?? now('America/Lima')->toDateString(), 'America/Lima')->endOfDay()->utc();
-        $orders = DB::table('orders')->join('sales', 'sales.order_id', '=', 'orders.id')->where('orders.tenant_id', $tenant)->whereBetween('sales.confirmed_at', [$from, $to]);
-        $ids = (clone $orders)->pluck('orders.id');
-        $gross = (int) (clone $orders)->sum('subtotal_minor');
-        $discounts = (int) (clone $orders)->sum('discount_minor');
+        $today = now('America/Lima');
+        $start = Carbon::parse($range['from'] ?? $today->copy()->startOfMonth()->toDateString(), 'America/Lima')->startOfDay();
+        $end = Carbon::parse($range['to'] ?? $today->toDateString(), 'America/Lima')->endOfDay();
+        if ($start->gt($end)) {
+            throw ValidationException::withMessages(['to' => 'La fecha final debe ser igual o posterior a la inicial.']);
+        }
+        $period = [$start->toIso8601String(), $end->format('Y-m-d\TH:i:s.uP')];
+        $days = (int) $start->diffInDays($end->copy()->addDay()->startOfDay());
+        $orders = $this->salesInPeriod($tenant, $period);
+        $summary = (clone $orders)->selectRaw('COUNT(*) AS sale_count, COALESCE(SUM(orders.subtotal_minor), 0) AS gross, COALESCE(SUM(orders.discount_minor), 0) AS discounts, COALESCE(SUM(orders.delivery_minor), 0) AS delivery')->first();
+        $gross = (int) ($summary->gross ?? 0);
+        $discounts = (int) ($summary->discounts ?? 0);
+        $delivery = (int) ($summary->delivery ?? 0);
+        $saleCount = (int) ($summary->sale_count ?? 0);
+        $confirmed = $gross - $discounts + $delivery;
+        $ids = (clone $orders)->select('orders.id');
         // Returns are recorded by their own event date rather than rewriting old periods.
-        $returns = (int) DB::table('returns')->where('tenant_id', $tenant)->whereBetween('created_at', [$from, $to])->sum('amount_minor');
+        $returnQuery = DB::table('returns')->where('tenant_id', $tenant)->whereBetween('created_at', $period);
+        $returns = (int) (clone $returnQuery)->sum('amount_minor');
         $cost = (int) DB::table('order_lines')->where('tenant_id', $tenant)->whereIn('order_id', $ids)->sum('cost_minor');
-        $returnedCost = (int) DB::table('returns')->where('tenant_id', $tenant)->whereBetween('created_at', [$from, $to])->sum('cost_minor');
+        $returnedCost = (int) (clone $returnQuery)->sum('cost_minor');
         $unknown = DB::table('order_lines')->where('tenant_id', $tenant)->whereIn('order_id', $ids)->whereNull('cost_minor')->count();
-        $unknown += DB::table('returns')->where('tenant_id', $tenant)->whereBetween('created_at', [$from, $to])->whereNull('cost_minor')->count();
-        $collections = (int) DB::table('payments')->where('tenant_id', $tenant)->where('status', 'verified')->whereBetween('verified_at', [$from, $to])->sum('amount_minor');
-        $refunds = (int) DB::table('refunds')->where('tenant_id', $tenant)->whereBetween('created_at', [$from, $to])->sum('amount_minor');
-        $debt = DB::table('orders')->where('tenant_id', $tenant)->where('status', 'confirmed')->get()->sum(fn ($o) => max(0, $o->total_minor - $o->returned_minor - app(Commerce::class)->paid($tenant, $o->id)));
-        $delivery = (int) (clone $orders)->sum('delivery_minor');
-        $expenses = (int) DB::table('expenses')->where('tenant_id', $tenant)->whereBetween('created_at', [$from, $to])->sum('amount_minor');
-        $loss = -(int) DB::table('stock_movements')->where('tenant_id', $tenant)->where('kind', 'inventory_loss')->whereBetween('created_at', [$from, $to])->sum('pool_value_delta_minor');
-        $unknown += DB::table('stock_movements')->where('tenant_id', $tenant)->where('kind', 'inventory_loss')->whereBetween('created_at', [$from, $to])->whereNull('pool_value_delta_minor')->count();
+        $unknown += (clone $returnQuery)->whereNull('cost_minor')->count();
+        $paymentMix = DB::table('payments')->where('tenant_id', $tenant)->where('status', 'verified')->whereBetween('verified_at', $period)
+            ->selectRaw('method, SUM(amount_minor) AS amount_minor')->groupBy('method')->orderByDesc('amount_minor')->orderBy('method')->get()
+            ->map(fn ($payment) => ['method' => (string) $payment->method, 'amount_minor' => (int) $payment->amount_minor])->all();
+        $collections = array_sum(array_column($paymentMix, 'amount_minor'));
+        $refunds = (int) DB::table('refunds')->where('tenant_id', $tenant)->whereBetween('created_at', $period)->sum('amount_minor');
+        $debt = DB::table('orders')->leftJoinSub($this->paymentsByOrder($tenant), 'paid', 'paid.order_id', '=', 'orders.id')
+            ->where('orders.tenant_id', $tenant)->where('orders.status', 'confirmed')
+            ->sum(DB::raw('greatest(0, orders.total_minor - orders.returned_minor - coalesce(paid.paid_minor, 0))'));
+        $expenses = (int) DB::table('expenses')->where('tenant_id', $tenant)->whereBetween('created_at', $period)->sum('amount_minor');
+        $lossQuery = DB::table('stock_movements')->where('tenant_id', $tenant)->where('kind', 'inventory_loss')->whereBetween('created_at', $period);
+        $loss = -(int) (clone $lossQuery)->sum('pool_value_delta_minor');
+        $unknown += (clone $lossQuery)->whereNull('pool_value_delta_minor')->count();
 
-        return ['from' => $from->timezone('America/Lima')->toDateString(), 'to' => $to->timezone('America/Lima')->toDateString(), 'gross_minor' => $gross, 'discount_minor' => $discounts, 'returns_minor' => $returns, 'delivery_minor' => $delivery, 'net_minor' => $gross - $discounts + $delivery - $returns, 'collections_minor' => $collections, 'refunds_minor' => $refunds, 'debt_minor' => $debt, 'cost_minor' => $cost - $returnedCost, 'gross_profit_minor' => $unknown ? null : $gross - $discounts + $delivery - $returns - $cost + $returnedCost, 'expenses_minor' => $expenses, 'inventory_loss_minor' => $loss, 'management_result_minor' => $unknown ? null : $gross - $discounts + $delivery - $returns - $cost + $returnedCost - $expenses - $loss, 'missing_cost_lines' => $unknown];
+        $previousStart = $start->copy()->subDays($days);
+        $previousEnd = $start->copy()->subDay()->endOfDay();
+        $previousPeriod = [$previousStart->toIso8601String(), $previousEnd->format('Y-m-d\TH:i:s.uP')];
+        $previousConfirmed = (int) $this->salesInPeriod($tenant, $previousPeriod)->sum('orders.total_minor');
+        $previousReturns = (int) DB::table('returns')->where('tenant_id', $tenant)->whereBetween('created_at', $previousPeriod)->sum('amount_minor');
+        $net = $confirmed - $returns;
+        $profit = $net - $cost + $returnedCost;
+
+        return [
+            'from' => $start->toDateString(), 'to' => $end->toDateString(),
+            'gross_minor' => $gross, 'discount_minor' => $discounts, 'returns_minor' => $returns,
+            'delivery_minor' => $delivery, 'net_minor' => $net, 'collections_minor' => $collections,
+            'refunds_minor' => $refunds, 'debt_minor' => (int) $debt, 'cost_minor' => $cost - $returnedCost,
+            'gross_profit_minor' => $unknown ? null : $profit, 'expenses_minor' => $expenses,
+            'inventory_loss_minor' => $loss, 'management_result_minor' => $unknown ? null : $profit - $expenses - $loss,
+            'missing_cost_lines' => $unknown, 'sales_count' => $saleCount,
+            'average_ticket_minor' => $saleCount ? (int) round($confirmed / $saleCount) : null,
+            'previous' => ['from' => $previousStart->toDateString(), 'to' => $previousEnd->toDateString(), 'net_minor' => $previousConfirmed - $previousReturns],
+            'trend' => $this->salesTrend($orders, $start, $days),
+            'payment_mix' => $paymentMix,
+            'channel_mix' => (clone $orders)->groupBy('orders.channel')->orderByDesc('amount_minor')->orderBy('orders.channel')
+                ->selectRaw('orders.channel, COUNT(*) AS sales_count, SUM(orders.total_minor) AS amount_minor')->get()
+                ->map(fn ($row) => ['channel' => $row->channel, 'sales_count' => (int) $row->sales_count, 'amount_minor' => (int) $row->amount_minor])->all(),
+            'top_products' => DB::table('order_lines')
+                ->join('products', fn ($join) => $join->on('products.id', '=', 'order_lines.product_id')->on('products.tenant_id', '=', 'order_lines.tenant_id'))
+                ->where('order_lines.tenant_id', $tenant)->whereIn('order_id', $ids)
+                ->groupBy('products.id', 'products.name', 'products.sku')
+                ->selectRaw('products.id, products.name, products.sku, SUM(order_lines.quantity) AS units, SUM(order_lines.total_minor) AS amount_minor, CASE WHEN COUNT(order_lines.cost_minor) = COUNT(*) THEN SUM(order_lines.total_minor - order_lines.cost_minor) END AS profit_minor')
+                ->orderByDesc('amount_minor')->orderBy('products.id')->limit(10)->get()
+                ->map(fn ($row) => ['id' => (int) $row->id, 'name' => $row->name, 'sku' => $row->sku, 'units' => (int) $row->units, 'amount_minor' => (int) $row->amount_minor, 'profit_minor' => $row->profit_minor === null ? null : (int) $row->profit_minor])->all(),
+        ];
+    }
+
+    /** @param array{string, string} $period */
+    private function salesInPeriod(int $tenant, array $period): Builder
+    {
+        return DB::table('orders')->join('sales', function ($join) {
+            $join->on('sales.order_id', '=', 'orders.id')->on('sales.tenant_id', '=', 'orders.tenant_id');
+        })->where('orders.tenant_id', $tenant)->whereBetween('sales.confirmed_at', $period);
+    }
+
+    /** @return list<array{from: string, to: string, amount_minor: int}> */
+    private function salesTrend(Builder $orders, Carbon $start, int $days): array
+    {
+        $step = intdiv($days + 7, 8);
+        $totals = (clone $orders)->selectRaw("((sales.confirmed_at AT TIME ZONE 'America/Lima')::date - CAST(? AS date)) / CAST(? AS integer) AS bucket, SUM(orders.total_minor) AS amount", [$start->toDateString(), $step])
+            ->groupBy('bucket')->pluck('amount', 'bucket');
+        $trend = [];
+        for ($offset = 0; $offset < $days; $offset += $step) {
+            $trend[] = [
+                'from' => $start->copy()->addDays($offset)->toDateString(),
+                'to' => $start->copy()->addDays(min($offset + $step, $days) - 1)->toDateString(),
+                'amount_minor' => (int) ($totals[intdiv($offset, $step)] ?? 0),
+            ];
+        }
+
+        return $trend;
     }
 
     public function mutate(Request $request, Commerce $commerce): RedirectResponse
@@ -172,7 +310,7 @@ class BusinessController extends Controller
             'open_cash' => ['warehouse_id' => 'required|integer', 'opening_minor' => 'required|integer|min:0|max:999999999'],
             'close_cash' => ['cash_session_id' => 'required|integer', 'counted_minor' => 'required|integer|min:0|max:999999999'],
             'cash_movement' => ['cash_session_id' => 'required|integer', 'amount_minor' => 'required|integer|not_in:0|min:-999999999|max:999999999', 'reason' => 'required|string|min:5|max:300'],
-            'pos_sale' => self::orderRules(),
+            'pos_sale' => [...self::orderRules(), 'delivered_now' => 'sometimes|boolean|prohibited_unless:delivery_method,pickup'],
             'payment' => ['order_id' => 'required|uuid', 'amount_minor' => 'required|integer|min:1|max:999999999', 'method' => ['required', Rule::in(['cash', 'yape', 'bcp'])], 'cash_session_id' => 'nullable|integer', 'reference' => 'nullable|string|max:120'],
             'verify_payment' => ['payment_id' => 'required|integer', 'accept' => 'required|boolean'],
             'confirm' => ['order_id' => 'required|uuid'],

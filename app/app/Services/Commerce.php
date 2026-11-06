@@ -430,6 +430,10 @@ class Commerce
             foreach ($digital as $payment) {
                 $this->pay($tenant, ['order_id' => $id, ...$payment], true);
             }
+            if ($data['delivery_method'] === 'pickup' && ($data['delivered_now'] ?? false)) {
+                DB::table('orders')->where('tenant_id', $tenant)->where('id', $id)->update(['delivery_status' => 'delivered']);
+                $this->recordOrderEvent($tenant, $id, 'delivery_delivered', 'delivered', 'Entregado en caja', 'El cliente recibió los productos al realizar la compra.');
+            }
         }
 
         return [
